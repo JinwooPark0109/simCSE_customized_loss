@@ -123,6 +123,13 @@ class ModelArguments:
         }
     )
 
+    cl_loss : str = field(
+        default="align_uniform_loss",
+        metadata={
+            "help": "what kind of cl loss to use(align_uniform_loss, original_contrastive_loss)"
+        }
+    )
+
 
 @dataclass
 class DataTrainingArguments:
@@ -394,7 +401,7 @@ def main():
     elif len(column_names) == 1:
         # Unsupervised datasets
         sent0_cname = column_names[0]
-        sent1_cname = column_names[0]
+        sent1_cname = column_names[0]# <---------- positive pair from same sentence with different dropout mask
     else:
         raise NotImplementedError
 

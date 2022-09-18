@@ -16,6 +16,8 @@ from transformers.file_utils import (
 )
 from transformers.modeling_outputs import SequenceClassifierOutput, BaseModelOutputWithPoolingAndCrossAttentions
 
+from simcse.cl_loss import get_cl_loss
+
 class MLPLayer(nn.Module):
     """
     Head for getting sentence representations over RoBERTa/BERT's CLS representation.
@@ -96,6 +98,7 @@ def cl_init(cls, config):
 
 def cl_forward(cls,
     encoder,
+    cl_loss,
     input_ids=None,
     attention_mask=None,
     token_type_ids=None,
@@ -164,6 +167,7 @@ def cl_forward(cls,
     z1, z2 = pooler_output[:,0], pooler_output[:,1]
 
     # Hard negative
+    z3=None # inited as None for custom loss. used instead of num_sent
     if num_sent == 3:
         z3 = pooler_output[:, 2]
 
@@ -191,6 +195,9 @@ def cl_forward(cls,
         z1 = torch.cat(z1_list, 0)
         z2 = torch.cat(z2_list, 0)
 
+    #-------------------------------------------------------------
+    loss_fct, cos_sim, loss = cl_loss(cls, (z1, z2, z3))
+    '''
     cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
     # Hard negative
     if num_sent >= 3:
@@ -205,11 +212,13 @@ def cl_forward(cls,
         # Note that weights are actually logits of weights
         z3_weight = cls.model_args.hard_negative_weight
         weights = torch.tensor(
-            [[0.0] * (cos_sim.size(-1) - z1_z3_cos.size(-1)) + [0.0] * i + [z3_weight] + [0.0] * (z1_z3_cos.size(-1) - i - 1) for i in range(z1_z3_cos.size(-1))]
+                [[0.0] * (cos_sim.size(-1) - z1_z3_cos.size(-1)) + [0.0] * i + [z3_weight] + [0.0] * (z1_z3_cos.size(-1) - i - 1) for i in range(z1_z3_cos.size(-1))]
         ).to(cls.device)
         cos_sim = cos_sim + weights
 
     loss = loss_fct(cos_sim, labels)
+    '''
+    #-------------------------------------------------------------
 
     # Calculate loss for MLM
     if mlm_outputs is not None and mlm_labels is not None:
@@ -280,6 +289,8 @@ class BertForCL(BertPreTrainedModel):
         self.model_args = model_kargs["model_args"]
         self.bert = BertModel(config, add_pooling_layer=False)
 
+        self.cl_loss=get_cl_loss(self.model_args.cl_loss)
+
         if self.model_args.do_mlm:
             self.lm_head = BertLMPredictionHead(config)
 
@@ -314,7 +325,7 @@ class BertForCL(BertPreTrainedModel):
                 return_dict=return_dict,
             )
         else:
-            return cl_forward(self, self.bert,
+            return cl_forward(self, self.bert, self.cl_loss,
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 token_type_ids=token_type_ids,
