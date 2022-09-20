@@ -196,7 +196,7 @@ def cl_forward(cls,
         z2 = torch.cat(z2_list, 0)
 
     #-------------------------------------------------------------
-    loss_fct, cos_sim, loss = cl_loss(cls, (z1, z2, z3))
+    cos_sim, loss = cl_loss(cls, (z1, z2, z3))
     '''
     cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
     # Hard negative
@@ -217,14 +217,20 @@ def cl_forward(cls,
         cos_sim = cos_sim + weights
 
     loss = loss_fct(cos_sim, labels)
+    
+    print("original code")
+    print("input:", z1.shape, z2.shape, (z1,z2))
+    print("cos sim:", cos_sim.shape, cos_sim)
+    print("loss:", loss.shape, loss)
     '''
     #-------------------------------------------------------------
 
     # Calculate loss for MLM
     if mlm_outputs is not None and mlm_labels is not None:
+        MLM_loss_fct = nn.CrossEntropyLoss()
         mlm_labels = mlm_labels.view(-1, mlm_labels.size(-1))
         prediction_scores = cls.lm_head(mlm_outputs.last_hidden_state)
-        masked_lm_loss = loss_fct(prediction_scores.view(-1, cls.config.vocab_size), mlm_labels.view(-1))
+        masked_lm_loss = MLM_loss_fct(prediction_scores.view(-1, cls.config.vocab_size), mlm_labels.view(-1))
         loss = loss + cls.model_args.mlm_weight * masked_lm_loss
 
     if not return_dict:

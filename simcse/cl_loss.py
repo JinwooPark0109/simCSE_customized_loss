@@ -14,11 +14,21 @@ def align_uniform_loss(cls, tup):
     y (b,d) : other side of positive pair
     z (b,d) : currently not used. for hard negative
     '''
-    print("custom loss used")
-    z1, z2,_= tup
-    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
 
-    return torch.nn.CrossEntropyLoss(), cos_sim, align_loss(z1,z2)+uniform_loss(z1)
+    z1, z2,_= tup
+    cos_sim = cls.sim(z1, z2)
+    a=align_loss(z1,z2)
+    u=uniform_loss(z1)
+    loss=a+u
+
+    print("custom loss used")
+    #print("input:", z1.shape, z2.shape, tup)
+    #print("cos sim:", cos_sim.shape, cos_sim)
+    print("align loss:", a.item())
+    print("uniform loss:", u.item())
+    print("loss:", loss.item())
+
+    return cos_sim, align_loss(z1,z2)+uniform_loss(z1)
 
 def original_contrastive_loss(cls, tup):
     '''
@@ -45,7 +55,14 @@ def original_contrastive_loss(cls, tup):
         ).to(cls.device)
         cos_sim = cos_sim + weights
 
-    return torch.nn.CrossEntropyLoss(), cos_sim, loss_fct(cos_sim, labels)
+    loss=loss_fct(cos_sim, labels)
+
+    print("original loss")
+    #print("input:", z1.shape, z2.shape, tup)
+    #print("cos sim:", cos_sim.shape, cos_sim)
+    print("loss:", loss.item())
+
+    return cos_sim, loss_fct(cos_sim, labels)
 
 def get_cl_loss(loss_name=None):
     if not loss_name:
