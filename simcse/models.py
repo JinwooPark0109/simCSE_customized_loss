@@ -196,7 +196,8 @@ def cl_forward(cls,
         z2 = torch.cat(z2_list, 0)
 
     #-------------------------------------------------------------
-    cos_sim, loss = cl_loss(cls, (z1, z2, z3))
+    # cos_sim, loss = cl_loss(cls, (z1, z2, z3))
+    loss_fct, cos_sim, loss = cl_loss(cls, (z1, z2, z3))
     '''
     cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
     # Hard negative
@@ -295,7 +296,7 @@ class BertForCL(BertPreTrainedModel):
         self.model_args = model_kargs["model_args"]
         self.bert = BertModel(config, add_pooling_layer=False)
 
-        self.cl_loss=get_cl_loss(self.model_args.cl_loss)
+        self.cl_loss=get_cl_loss(self.model_args.cl_loss,self.model_args)
 
         if self.model_args.do_mlm:
             self.lm_head = BertLMPredictionHead(config)

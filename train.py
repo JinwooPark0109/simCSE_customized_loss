@@ -124,12 +124,26 @@ class ModelArguments:
     )
 
     cl_loss : str = field(
-        default="align_uniform_loss",
+        default="custom_loss",
         metadata={
             "help": "what kind of cl loss to use(align_uniform_loss, original_contrastive_loss)"
         }
     )
 
+    ##############################
+    mycl_name : str = field(
+        default='cpc',
+        metadata={
+            "help": "mycl_name"
+        }
+    )
+
+    hparams : str = field(
+        default='{"lambda_pos":1.0,"lambda_neg":1.0,"tau":0.05}',
+        metadata={
+            "help": "hparams"
+        }
+    )
 
 @dataclass
 class DataTrainingArguments:
@@ -402,6 +416,7 @@ def main():
         # Unsupervised datasets
         sent0_cname = column_names[0]
         sent1_cname = column_names[0]# <---------- positive pair from same sentence with different dropout mask
+        sent2_cname = column_names[0]
     else:
         raise NotImplementedError
 
