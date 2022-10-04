@@ -201,6 +201,10 @@ class OurTrainingArguments(TrainingArguments):
         default=False,
         metadata={"help": "Evaluate transfer task dev sets (in validation)."}
     )
+    disable_tqdm : bool = field(
+        default=False,
+        metadata={"help": "disable tqdm"}
+    )
 
     @cached_property
     @torch_required
