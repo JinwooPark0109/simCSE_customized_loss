@@ -356,6 +356,8 @@ class RobertaForCL(RobertaPreTrainedModel):
         self.model_args = model_kargs["model_args"]
         self.roberta = RobertaModel(config, add_pooling_layer=False)
 
+        self.cl_loss=get_cl_loss(self.model_args.cl_loss)
+
         if self.model_args.do_mlm:
             self.lm_head = RobertaLMHead(config)
 
@@ -390,7 +392,7 @@ class RobertaForCL(RobertaPreTrainedModel):
                 return_dict=return_dict,
             )
         else:
-            return cl_forward(self, self.roberta,
+            return cl_forward(self, self.roberta, self.cl_loss,
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 token_type_ids=token_type_ids,
