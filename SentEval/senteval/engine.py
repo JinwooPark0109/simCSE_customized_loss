@@ -22,6 +22,7 @@ from senteval.sts import STS12Eval, STS13Eval, STS14Eval, STS15Eval, STS16Eval, 
 from senteval.sst import SSTEval
 from senteval.rank import ImageCaptionRetrievalEval
 from senteval.probing import *
+from senteval.sts_una import UNASTS12Eval, UNASTS13Eval, UNASTS14Eval, UNASTS15Eval, UNASTS16Eval, UNASTSBenchmarkEval, UNASICKRelatednessEval ## Euna added
 
 class SE(object):
     def __init__(self, params, batcher, prepare=None):
@@ -51,7 +52,8 @@ class SE(object):
                            'STS14', 'STS15', 'STS16',
                            'Length', 'WordContent', 'Depth', 'TopConstituents',
                            'BigramShift', 'Tense', 'SubjNumber', 'ObjNumber',
-                           'OddManOut', 'CoordinationInversion', 'SICKRelatedness-finetune', 'STSBenchmark-finetune', 'STSBenchmark-fix']
+                           'OddManOut', 'CoordinationInversion', 'SICKRelatedness-finetune', 'STSBenchmark-finetune', 'STSBenchmark-fix',
+                           'UNASTS12', 'UNASTS13', 'UNASTS14', 'UNASTS15', 'UNASTS16', 'UNASTSBenchmark', 'UNASICKRelatedness'] ## Euna added
 
     def eval(self, name):
         # evaluate on evaluation [name], either takes string or list of strings
@@ -98,6 +100,14 @@ class SE(object):
             self.evaluation = eval(name + 'Eval')(tpath + '/downstream/STS/' + fpath, seed=self.params.seed)
         elif name == 'ImageCaptionRetrieval':
             self.evaluation = ImageCaptionRetrievalEval(tpath + '/downstream/COCO', seed=self.params.seed)
+        ## From here, Euna added
+        elif name in ['UNASTS12', 'UNASTS13', 'UNASTS14', 'UNASTS15', 'UNASTS16']:
+            fpath = name.replace('UNA', '') + '-en-test'
+            self.evaluation = eval(name + 'Eval')(tpath + '/downstream/STS/' + fpath, seed=self.params.seed)
+        elif name == 'UNASICKRelatedness':
+            self.evaluation = UNASICKRelatednessEval(tpath + '/downstream/SICK', seed=self.params.seed)
+        elif name == 'UNASTSBenchmark':
+            self.evaluation = UNASTSBenchmarkEval(tpath + '/downstream/STS/STSBenchmark', seed=self.params.seed)
 
         # Probing Tasks
         elif name == 'Length':

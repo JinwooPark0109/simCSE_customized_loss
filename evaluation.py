@@ -19,10 +19,11 @@ PATH_TO_DATA = './SentEval/data'
 sys.path.insert(0, PATH_TO_SENTEVAL)
 import senteval
 
-def print_table(task_names, scores):
+def print_table(task_names, scores_ls):
     tb = PrettyTable()
     tb.field_names = task_names
-    tb.add_row(scores)
+    for scores in scores_ls:
+        tb.add_row(scores)
     print(tb)
 
 def main():
@@ -38,7 +39,7 @@ def main():
             default='test', 
             help="What evaluation mode to use (dev: fast mode, dev results; test: full mode, test results); fasttest: fast mode, test results")
     parser.add_argument("--task_set", type=str, 
-            choices=['sts', 'transfer', 'full', 'na'],
+            choices=['sts', 'transfer', 'full', 'na', 'sts_una'],
             default='sts',
             help="What set of tasks to evaluate on. If not 'na', this will override '--tasks'")
     parser.add_argument("--tasks", type=str, nargs='+', 
@@ -63,6 +64,8 @@ def main():
     elif args.task_set == 'full':
         args.tasks = ['STS12', 'STS13', 'STS14', 'STS15', 'STS16', 'STSBenchmark', 'SICKRelatedness']
         args.tasks += ['MR', 'CR', 'MPQA', 'SUBJ', 'SST2', 'TREC', 'MRPC']
+    elif args.task_set == 'sts_una':
+        args.tasks = ['UNASTS12', 'UNASTS13', 'UNASTS14', 'UNASTS15', 'UNASTS16', 'UNASTSBenchmark', 'UNASICKRelatedness']
 
     # Set params for SentEval
     if args.mode == 'dev' or args.mode == 'fasttest':
@@ -156,7 +159,7 @@ def main():
                 scores.append("%.2f" % (results[task]['dev']['spearman'][0] * 100))
             else:
                 scores.append("0.00")
-        print_table(task_names, scores)
+        print_table(task_names, [scores])
 
         task_names = []
         scores = []
@@ -168,25 +171,52 @@ def main():
                 scores.append("0.00")
         task_names.append("Avg.")
         scores.append("%.2f" % (sum([float(score) for score in scores]) / len(scores)))
-        print_table(task_names, scores)
+        print_table(task_names, [scores])
 
     elif args.mode == 'test' or args.mode == 'fasttest':
         print("------ %s ------" % (args.mode))
 
         task_names = []
         scores = []
-        for task in ['STS12', 'STS13', 'STS14', 'STS15', 'STS16', 'STSBenchmark', 'SICKRelatedness']:
+        if args.task_set == 'sts_una':
+            align_losses = []
+            uniform_losses = []
+            IW_scores = []
+            avgcos_scores = []
+            tasks_ls = ['UNASTS12', 'UNASTS13', 'UNASTS14', 'UNASTS15', 'UNASTS16', 'UNASTSBenchmark', 'UNASICKRelatedness']
+            sts_tasks_ls = ['UNASTS12', 'UNASTS13', 'UNASTS14', 'UNASTS15', 'UNASTS16']
+        else:
+            tasks_ls = ['STS12', 'STS13', 'STS14', 'STS15', 'STS16', 'STSBenchmark', 'SICKRelatedness']
+            sts_tasks_ls = ['STS12', 'STS13', 'STS14', 'STS15', 'STS16']
+
+        for task in tasks_ls:
             task_names.append(task)
             if task in results:
-                if task in ['STS12', 'STS13', 'STS14', 'STS15', 'STS16']:
+                if task in sts_tasks_ls:
                     scores.append("%.2f" % (results[task]['all']['spearman']['all'] * 100))
+                    align_losses.append("%.2f" % (results[task]['all']['align']['mean']))
+                    uniform_losses.append("%.2f" % (results[task]['all']['uniform']['mean']))
+                    IW_scores.append("%.2f" % (results[task]['all']['IW']['mean']))
+                    avgcos_scores.append("%.2f" % (results[task]['all']['avgcos']['mean']))
                 else:
                     scores.append("%.2f" % (results[task]['test']['spearman'].correlation * 100))
+                    align_losses.append("%.2f" % (results[task]['all']['align']['mean']))
+                    uniform_losses.append("%.2f" % (results[task]['all']['uniform']['mean']))
+                    IW_scores.append("%.2f" % (results[task]['all']['IW']['mean']))
+                    avgcos_scores.append("%.2f" % (results[task]['all']['avgcos']['mean']))
             else:
                 scores.append("0.00")
+                align_losses.append("0.00")
+                uniform_losses.append("0.00")
+                IW_scores.append("0.00")
+                avgcos_scores.append("0.00")
         task_names.append("Avg.")
         scores.append("%.2f" % (sum([float(score) for score in scores]) / len(scores)))
-        print_table(task_names, scores)
+        align_losses.append("%.2f" % (sum([float(score) for score in align_losses]) / len(align_losses)))
+        uniform_losses.append("%.2f" % (sum([float(score) for score in uniform_losses]) / len(uniform_losses)))
+        IW_scores.append("%.2f" % (sum([float(score) for score in IW_scores]) / len(IW_scores)))
+        avgcos_scores.append("%.2f" % (sum([float(score) for score in avgcos_scores]) / len(avgcos_scores)))
+        print_table(task_names, [scores, align_losses, uniform_losses, IW_scores, avgcos_scores])
 
         task_names = []
         scores = []
@@ -198,7 +228,7 @@ def main():
                 scores.append("0.00")
         task_names.append("Avg.")
         scores.append("%.2f" % (sum([float(score) for score in scores]) / len(scores)))
-        print_table(task_names, scores)
+        print_table(task_names, [scores])
 
 
 if __name__ == "__main__":
