@@ -53,17 +53,13 @@ class STSUniformityAndAlignment(object):
         all_sys_scores = []
         all_gs_scores = []
         ################# newly added
-        all_loss_align = []
-        all_loss_uniform = []
-        all_IW_scores = []
-        all_avgcos_scores = []
+        all_enc1 = []
+        all_enc2 = []
+        all_enc1_pos = []
+        all_enc2_pos = []
         #################
         for dataset in self.datasets:
             sys_scores = []
-            losses_align = []
-            losses_uniform = []
-            IW_scores = []
-            avgcos_scores = []
             input1, input2, gs_scores = self.data[dataset] ## len(input1)=750
             for ii in range(0, len(gs_scores), params.batch_size):
                 batch1 = input1[ii:ii + params.batch_size] ## len(batch1) = token length(?)
@@ -75,20 +71,10 @@ class STSUniformityAndAlignment(object):
                     enc1 = batcher(params, batch1) ## enc1.shape = [token length(?), dim]
                     enc2 = batcher(params, batch2)
                     ################# newly added
-                    ## Uniformity
-                    norm_enc1 = F.normalize(enc1) ## Normalized rep, torch.norm(norm_enc1_pos[0])=1.0000
-                    norm_enc2 = F.normalize(enc2)
+                    all_enc1.append(enc1)
+                    all_enc2.append(enc2)
 
-                    loss_uniform = uniform_loss(torch.cat((norm_enc1, norm_enc2), dim=0))
-                    IW = measure_I_W(torch.cat((enc1, enc2), dim=0))
-                    avgcos = measure_avg_cos(torch.cat((enc1, enc2), dim=0))
-
-                    losses_uniform.append(loss_uniform)
-                    IW_scores.append(IW)
-                    avgcos_scores.append(avgcos)
-
-                    ## Alignment
-                    # if params.current_task == "UNASTSBenchmark":
+                    ## Pos indices
                     pos_indices = [i for i in range(len(batch_gs_scores)) if batch_gs_scores[i] >= 4.0] ## select positive (scores=4 or 5) samples in the batch
                     if len(pos_indices) == 0: ## There might be no pos indices in some batches
                         pass
@@ -96,11 +82,8 @@ class STSUniformityAndAlignment(object):
                         enc1_pos = enc1[pos_indices] ## shape=[# pos samples, dim]
                         enc2_pos = enc2[pos_indices]
 
-                        norm_enc1_pos = F.normalize(enc1_pos) ## Normalized rep
-                        norm_enc2_pos = F.normalize(enc2_pos)
-
-                        loss_align = align_loss(norm_enc1_pos, norm_enc2_pos)
-                        losses_align.append(loss_align)
+                        all_enc1_pos.append(enc1_pos)
+                        all_enc2_pos.append(enc2_pos)
                     #################
 
                     for kk in range(enc2.shape[0]):
@@ -109,17 +92,30 @@ class STSUniformityAndAlignment(object):
             
             all_sys_scores.extend(sys_scores)
             all_gs_scores.extend(gs_scores)
-            all_loss_align.extend(losses_align)
-            all_loss_uniform.extend(losses_uniform)
-            all_IW_scores.extend(IW_scores)
-            all_avgcos_scores.extend(avgcos_scores)
+            
+            ## Uniformity and Alignment
+            all_enc1_ts = torch.cat(all_enc1, dim=0)
+            all_enc2_ts = torch.cat(all_enc2, dim=0)
+            norm_all_enc1_ts = F.normalize(all_enc1_ts)
+            norm_all_enc2_ts = F.normalize(all_enc2_ts)
+
+            all_enc1_pos_ts = torch.cat(all_enc1_pos, dim=0)
+            all_enc2_pos_ts = torch.cat(all_enc2_pos, dim=0)
+            norm_all_enc1_pos_ts = F.normalize(all_enc1_pos_ts)
+            norm_all_enc2_pos_ts = F.normalize(all_enc2_pos_ts)
+
+            all_loss_align = align_loss(norm_all_enc1_pos_ts, norm_all_enc2_pos_ts)
+            all_loss_uniform = uniform_loss(torch.cat((norm_all_enc1_ts, norm_all_enc2_ts), dim=0))
+            all_IW_scores = measure_I_W(torch.cat((all_enc1_ts, all_enc2_ts), dim=0))
+            all_avgcos_scores = measure_avg_cos(torch.cat((all_enc1_ts, all_enc2_ts), dim=0))
+
             results[dataset] = {'pearson': pearsonr(sys_scores, gs_scores), ## len(sys_scores) = 750
                                 'spearman': spearmanr(sys_scores, gs_scores),
                                 'nsamples': len(sys_scores),
-                                'align_loss': np.mean(all_loss_align),  # newly added
-                                'uniform_loss': np.mean(all_loss_uniform),  # newly added
-                                'IW': np.mean(all_IW_scores),  # newly added
-                                'avgcos': np.mean(all_avgcos_scores)}  # newly added
+                                'align_loss': all_loss_align,  # newly added
+                                'uniform_loss': all_loss_uniform,  # newly added
+                                'IW': all_IW_scores,  # newly added
+                                'avgcos': all_avgcos_scores}  # newly added
             logging.debug('%s : pearson = %.4f, spearman = %.4f, align_loss = %.4f, uniform_loss = %.4f, IW = %.4f, avgcos = %.4f' %
                         (dataset, results[dataset]['pearson'][0], results[dataset]['spearman'][0],
                         results[dataset]['align_loss'], results[dataset]['uniform_loss'],
