@@ -47,6 +47,7 @@ def main():
                      'MR', 'CR', 'MPQA', 'SUBJ', 'SST2', 'TREC', 'MRPC',
                      'SICKRelatedness', 'STSBenchmark'], 
             help="Tasks to evaluate on. If '--task_set' is specified, this will be overridden")
+    parser.add_argument("--output_reps", type=bool, default=False, help="Whether to output reps or not")
     
     args = parser.parse_args()
     
@@ -76,7 +77,7 @@ def main():
                                          'tenacity': 3, 'epoch_size': 2}
     elif args.mode == 'test':
         # Full mode
-        params = {'task_path': PATH_TO_DATA, 'usepytorch': True, 'kfold': 10, 'save_path': args.model_name_or_path}
+        params = {'task_path': PATH_TO_DATA, 'usepytorch': True, 'kfold': 10, 'save_path': args.model_name_or_path, 'output_reps': args.output_reps}
         params['classifier'] = {'nhid': 0, 'optim': 'adam', 'batch_size': 64,
                                          'tenacity': 5, 'epoch_size': 4}
     else:

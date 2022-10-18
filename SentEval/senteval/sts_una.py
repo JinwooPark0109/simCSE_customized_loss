@@ -106,9 +106,12 @@ class STSUniformityAndAlignment(object):
 
             all_loss_align = align_loss(norm_all_enc1_pos_ts, norm_all_enc2_pos_ts)
             all_loss_uniform = uniform_loss(torch.cat((norm_all_enc1_ts, norm_all_enc2_ts), dim=0))
-            all_IW_scores = measure_I_W(torch.cat((all_enc1_ts, all_enc2_ts), dim=0))
-            all_avgcos_scores = measure_avg_cos(torch.cat((all_enc1_ts, all_enc2_ts), dim=0), save_path=params.save_path)
-            all_disentanglement_scores = measure_disentanglement(torch.cat((all_enc1_ts, all_enc2_ts), dim=0), save_path=params.save_path)
+            W = torch.cat((all_enc1_ts, all_enc2_ts), dim=0)
+            all_IW_scores = measure_I_W(W)
+            all_avgcos_scores = measure_avg_cos(W)
+            all_disentanglement_scores = measure_disentanglement(W)
+            if params.output_reps:
+                torch.save(W.data, params.save_path + "/" + dataset + "_rep.pt")
 
             results[dataset] = {'pearson': pearsonr(sys_scores, gs_scores), ## len(sys_scores) = 750
                                 'spearman': spearmanr(sys_scores, gs_scores),
@@ -195,7 +198,7 @@ def measure_I_W(W):
     i_w = z.min() / z.max()
     return float(i_w)
 
-def measure_avg_cos(W, save_path=None):
+def measure_avg_cos(W):
     assert(len(W.shape) == 2)
     ## W: embedding matrix, shape=[n_data, dim]
     n_data = W.shape[0]
@@ -204,11 +207,9 @@ def measure_avg_cos(W, save_path=None):
     WW = torch.matmul(W, W.T) ## WW.shape[n_data, n_data]
     triu_numel = n_data * (n_data-1) / 2
     cos = torch.sum(torch.triu(WW, diagonal=1)) / triu_numel
-    if save_path is not None:
-        torch.save(WW.data, save_path + "/cos.pt")
     return float(cos)
 
-def measure_disentanglement(W, save_path=None):
+def measure_disentanglement(W):
     assert(len(W.shape) == 2)
     ## W: embedding matrix, shape=[n_data, dim]
     W_T = W.T
@@ -219,8 +220,6 @@ def measure_disentanglement(W, save_path=None):
     # print("WW.shape", WW.shape)
     triu_numel = dim * (dim-1) / 2
     cos = torch.sum(torch.triu(WW, diagonal=1)) / triu_numel
-    if save_path is not None:
-        torch.save(WW.data, save_path + "/dis.pt")
     return float(cos)
 
 class UNASTS12Eval(STSUniformityAndAlignment):
