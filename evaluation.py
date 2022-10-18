@@ -197,18 +197,18 @@ def main():
             if task in results:
                 if task in sts_tasks_ls:
                     scores.append("%.2f" % (results[task]['all']['spearman']['all'] * 100))
-                    align_losses.append("%.2f" % (results[task]['all']['align']['mean']))
-                    uniform_losses.append("%.2f" % (results[task]['all']['uniform']['mean']))
+                    align_losses.append("%.2f" % (results[task]['all']['align_loss']['mean']))
+                    uniform_losses.append("%.2f" % (results[task]['all']['uniform_loss']['mean']))
                     IW_scores.append("%.2f" % (results[task]['all']['IW']['mean']))
                     avgcos_scores.append("%.2f" % (results[task]['all']['avgcos']['mean']))
                     disentanglement_scores.append("%.2f" % (results[task]['all']['disentanglement']['mean']))
                 else:
                     scores.append("%.2f" % (results[task]['test']['spearman'].correlation * 100))
-                    align_losses.append("%.2f" % (results[task]['test']['align']['mean']))
-                    uniform_losses.append("%.2f" % (results[task]['test']['uniform']['mean']))
-                    IW_scores.append("%.2f" % (results[task]['test']['IW']['mean']))
-                    avgcos_scores.append("%.2f" % (results[task]['test']['avgcos']['mean']))
-                    disentanglement_scores.append("%.2f" % (results[task]['test']['disentanglement']['mean']))
+                    align_losses.append("%.2f" % (results[task]['test']['align_loss']))
+                    uniform_losses.append("%.2f" % (results[task]['test']['uniform_loss']))
+                    IW_scores.append("%.2f" % (results[task]['test']['IW']))
+                    avgcos_scores.append("%.2f" % (results[task]['test']['avgcos']))
+                    disentanglement_scores.append("%.2f" % (results[task]['test']['disentanglement']))
             else:
                 scores.append("0.00")
                 align_losses.append("0.00")

@@ -111,6 +111,7 @@ class STSUniformityAndAlignment(object):
             all_avgcos_scores = measure_avg_cos(W)
             all_disentanglement_scores = measure_disentanglement(W)
             if params.output_reps:
+                print("=== saving output reps ===")
                 torch.save(W.data, params.save_path + "/" + task_name + "_" + dataset + "_reps.pt")
 
             results[dataset] = {'pearson': pearsonr(sys_scores, gs_scores), ## len(sys_scores) = 750
@@ -161,9 +162,9 @@ class STSUniformityAndAlignment(object):
                           'spearman': {'all': all_spearman[0],
                                        'mean': avg_spearman,
                                        'wmean': wavg_spearman},
-                          'align': {'mean': avg_align,
+                          'align_loss': {'mean': avg_align,
                                     'wmean': wavg_align},
-                          'uniform': {'mean': avg_uniform,
+                          'uniform_loss': {'mean': avg_uniform,
                                     'wmean': wavg_uniform},
                           'IW': {'mean': avg_IW,
                                 'wmean': wavg_IW},
