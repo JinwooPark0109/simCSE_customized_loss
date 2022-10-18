@@ -204,11 +204,11 @@ def main():
                     disentanglement_scores.append("%.2f" % (results[task]['all']['disentanglement']['mean']))
                 else:
                     scores.append("%.2f" % (results[task]['test']['spearman'].correlation * 100))
-                    align_losses.append("%.2f" % (results[task]['all']['align']['mean']))
-                    uniform_losses.append("%.2f" % (results[task]['all']['uniform']['mean']))
-                    IW_scores.append("%.2f" % (results[task]['all']['IW']['mean']))
-                    avgcos_scores.append("%.2f" % (results[task]['all']['avgcos']['mean']))
-                    disentanglement_scores.append("%.2f" % (results[task]['all']['disentanglement']['mean']))
+                    align_losses.append("%.2f" % (results[task]['test']['align']['mean']))
+                    uniform_losses.append("%.2f" % (results[task]['test']['uniform']['mean']))
+                    IW_scores.append("%.2f" % (results[task]['test']['IW']['mean']))
+                    avgcos_scores.append("%.2f" % (results[task]['test']['avgcos']['mean']))
+                    disentanglement_scores.append("%.2f" % (results[task]['test']['disentanglement']['mean']))
             else:
                 scores.append("0.00")
                 align_losses.append("0.00")

@@ -134,6 +134,6 @@ class SE(object):
         self.params.current_task = name
         self.evaluation.do_prepare(self.params, self.prepare)
 
-        self.results = self.evaluation.run(self.params, self.batcher)
+        self.results = self.evaluation.run(self.params, self.batcher, name)
 
         return self.results

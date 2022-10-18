@@ -48,7 +48,7 @@ class STSUniformityAndAlignment(object):
             self.similarity = lambda s1, s2: np.nan_to_num(cosine(np.nan_to_num(s1), np.nan_to_num(s2)))
         return prepare(params, self.samples)
 
-    def run(self, params, batcher):
+    def run(self, params, batcher, task_name):
         results = {}
         all_sys_scores = []
         all_gs_scores = []
@@ -111,7 +111,7 @@ class STSUniformityAndAlignment(object):
             all_avgcos_scores = measure_avg_cos(W)
             all_disentanglement_scores = measure_disentanglement(W)
             if params.output_reps:
-                torch.save(W.data, params.save_path + "/" + dataset + "_rep.pt")
+                torch.save(W.data, params.save_path + "/" + task_name + "_" + dataset + "_reps.pt")
 
             results[dataset] = {'pearson': pearsonr(sys_scores, gs_scores), ## len(sys_scores) = 750
                                 'spearman': spearmanr(sys_scores, gs_scores),
