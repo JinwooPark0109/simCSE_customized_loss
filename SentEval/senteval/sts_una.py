@@ -107,7 +107,8 @@ class STSUniformityAndAlignment(object):
             all_loss_align = align_loss(norm_all_enc1_pos_ts, norm_all_enc2_pos_ts)
             all_loss_uniform = uniform_loss(torch.cat((norm_all_enc1_ts, norm_all_enc2_ts), dim=0))
             all_IW_scores = measure_I_W(torch.cat((all_enc1_ts, all_enc2_ts), dim=0))
-            all_avgcos_scores = measure_avg_cos(torch.cat((all_enc1_ts, all_enc2_ts), dim=0))
+            all_avgcos_scores = measure_avg_cos(torch.cat((all_enc1_ts, all_enc2_ts), dim=0), save_path=params.save_path)
+            all_disentanglement_scores = measure_disentanglement(torch.cat((all_enc1_ts, all_enc2_ts), dim=0), save_path=params.save_path)
 
             results[dataset] = {'pearson': pearsonr(sys_scores, gs_scores), ## len(sys_scores) = 750
                                 'spearman': spearmanr(sys_scores, gs_scores),
@@ -115,11 +116,13 @@ class STSUniformityAndAlignment(object):
                                 'align_loss': all_loss_align,  # newly added
                                 'uniform_loss': all_loss_uniform,  # newly added
                                 'IW': all_IW_scores,  # newly added
-                                'avgcos': all_avgcos_scores}  # newly added
-            logging.debug('%s : pearson = %.4f, spearman = %.4f, align_loss = %.4f, uniform_loss = %.4f, IW = %.4f, avgcos = %.4f' %
+                                'avgcos': all_avgcos_scores,  # newly added
+                                'disentanglement': all_disentanglement_scores,  # newly added
+                                }
+            logging.debug('%s : pearson = %.4f, spearman = %.4f, align_loss = %.4f, uniform_loss = %.4f, IW = %.4f, avgcos = %.4f, disentanglement = %.4f' %
                         (dataset, results[dataset]['pearson'][0], results[dataset]['spearman'][0],
                         results[dataset]['align_loss'], results[dataset]['uniform_loss'],
-                        results[dataset]['IW'], results[dataset]['avgcos'])
+                        results[dataset]['IW'], results[dataset]['avgcos'], results[dataset]['disentanglement'])
                         )
         
         weights = [results[dset]['nsamples'] for dset in results.keys()]
@@ -129,6 +132,7 @@ class STSUniformityAndAlignment(object):
         list_uniform = np.array([results[dset]['uniform_loss'] for dset in results.keys()])
         list_IW = np.array([results[dset]['IW'] for dset in results.keys()])
         list_avgcos = np.array([results[dset]['avgcos'] for dset in results.keys()])
+        list_disentanglement = np.array([results[dset]['disentanglement'] for dset in results.keys()])
 
         avg_pearson = np.average(list_prs)
         avg_spearman = np.average(list_spr)
@@ -136,12 +140,16 @@ class STSUniformityAndAlignment(object):
         avg_uniform = np.average(list_uniform)
         avg_IW = np.average(list_IW)
         avg_avgcos = np.average(list_avgcos)
+        avg_disentanglement = np.average(list_disentanglement)
+
         wavg_pearson = np.average(list_prs, weights=weights)
         wavg_spearman = np.average(list_spr, weights=weights)
         wavg_align = np.average(list_align, weights=weights)
         wavg_uniform = np.average(list_uniform, weights=weights)
         wavg_IW = np.average(list_IW, weights=weights)
         wavg_avgcos = np.average(list_avgcos, weights=weights)
+        wavg_disentanglement = np.average(list_disentanglement, weights=weights)
+
         all_pearson = pearsonr(all_sys_scores, all_gs_scores)
         all_spearman = spearmanr(all_sys_scores, all_gs_scores)
         results['all'] = {'pearson': {'all': all_pearson[0],
@@ -158,6 +166,8 @@ class STSUniformityAndAlignment(object):
                                 'wmean': wavg_IW},
                           'avgcos': {'mean': avg_avgcos,
                                     'wmean': wavg_avgcos},
+                          'disentanglement': {'mean': avg_disentanglement,
+                                    'wmean': wavg_disentanglement},
                                        }
         logging.debug('ALL : Pearson = %.4f, \
             Spearman = %.4f' % (all_pearson[0], all_spearman[0]))
@@ -185,7 +195,7 @@ def measure_I_W(W):
     i_w = z.min() / z.max()
     return float(i_w)
 
-def measure_avg_cos(W):
+def measure_avg_cos(W, save_path=None):
     assert(len(W.shape) == 2)
     ## W: embedding matrix, shape=[n_data, dim]
     n_data = W.shape[0]
@@ -194,6 +204,23 @@ def measure_avg_cos(W):
     WW = torch.matmul(W, W.T) ## WW.shape[n_data, n_data]
     triu_numel = n_data * (n_data-1) / 2
     cos = torch.sum(torch.triu(WW, diagonal=1)) / triu_numel
+    if save_path is not None:
+        torch.save(WW.data, save_path + "/cos.pt")
+    return float(cos)
+
+def measure_disentanglement(W, save_path=None):
+    assert(len(W.shape) == 2)
+    ## W: embedding matrix, shape=[n_data, dim]
+    W_T = W.T
+    dim = W_T.shape[0]
+    W_T_norm = torch.norm(W_T, dim=1)
+    W_T /= W_T_norm.unsqueeze(1)
+    WW = torch.matmul(W_T, W) ## WW.shape[dim, dim]
+    # print("WW.shape", WW.shape)
+    triu_numel = dim * (dim-1) / 2
+    cos = torch.sum(torch.triu(WW, diagonal=1)) / triu_numel
+    if save_path is not None:
+        torch.save(WW.data, save_path + "/dis.pt")
     return float(cos)
 
 class UNASTS12Eval(STSUniformityAndAlignment):

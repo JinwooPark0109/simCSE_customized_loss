@@ -65,7 +65,8 @@ def main():
         args.tasks = ['STS12', 'STS13', 'STS14', 'STS15', 'STS16', 'STSBenchmark', 'SICKRelatedness']
         args.tasks += ['MR', 'CR', 'MPQA', 'SUBJ', 'SST2', 'TREC', 'MRPC']
     elif args.task_set == 'sts_una':
-        args.tasks = ['UNASTS12', 'UNASTS13', 'UNASTS14', 'UNASTS15', 'UNASTS16', 'UNASTSBenchmark', 'UNASICKRelatedness']
+        # args.tasks = ['UNASTS12', 'UNASTS13', 'UNASTS14', 'UNASTS15', 'UNASTS16', 'UNASTSBenchmark', 'UNASICKRelatedness']
+        args.tasks = ['UNASTSBenchmark']
 
     # Set params for SentEval
     if args.mode == 'dev' or args.mode == 'fasttest':
@@ -75,7 +76,7 @@ def main():
                                          'tenacity': 3, 'epoch_size': 2}
     elif args.mode == 'test':
         # Full mode
-        params = {'task_path': PATH_TO_DATA, 'usepytorch': True, 'kfold': 10}
+        params = {'task_path': PATH_TO_DATA, 'usepytorch': True, 'kfold': 10, 'save_path': args.model_name_or_path}
         params['classifier'] = {'nhid': 0, 'optim': 'adam', 'batch_size': 64,
                                          'tenacity': 5, 'epoch_size': 4}
     else:
@@ -183,6 +184,7 @@ def main():
             uniform_losses = []
             IW_scores = []
             avgcos_scores = []
+            disentanglement_scores = []
             tasks_ls = ['UNASTS12', 'UNASTS13', 'UNASTS14', 'UNASTS15', 'UNASTS16', 'UNASTSBenchmark', 'UNASICKRelatedness']
             sts_tasks_ls = ['UNASTS12', 'UNASTS13', 'UNASTS14', 'UNASTS15', 'UNASTS16']
         else:
@@ -198,25 +200,29 @@ def main():
                     uniform_losses.append("%.2f" % (results[task]['all']['uniform']['mean']))
                     IW_scores.append("%.2f" % (results[task]['all']['IW']['mean']))
                     avgcos_scores.append("%.2f" % (results[task]['all']['avgcos']['mean']))
+                    disentanglement_scores.append("%.2f" % (results[task]['all']['disentanglement']['mean']))
                 else:
                     scores.append("%.2f" % (results[task]['test']['spearman'].correlation * 100))
                     align_losses.append("%.2f" % (results[task]['all']['align']['mean']))
                     uniform_losses.append("%.2f" % (results[task]['all']['uniform']['mean']))
                     IW_scores.append("%.2f" % (results[task]['all']['IW']['mean']))
                     avgcos_scores.append("%.2f" % (results[task]['all']['avgcos']['mean']))
+                    disentanglement_scores.append("%.2f" % (results[task]['all']['disentanglement']['mean']))
             else:
                 scores.append("0.00")
                 align_losses.append("0.00")
                 uniform_losses.append("0.00")
                 IW_scores.append("0.00")
                 avgcos_scores.append("0.00")
+                disentanglement_scores.append("0.00")
         task_names.append("Avg.")
         scores.append("%.2f" % (sum([float(score) for score in scores]) / len(scores)))
         align_losses.append("%.2f" % (sum([float(score) for score in align_losses]) / len(align_losses)))
         uniform_losses.append("%.2f" % (sum([float(score) for score in uniform_losses]) / len(uniform_losses)))
         IW_scores.append("%.2f" % (sum([float(score) for score in IW_scores]) / len(IW_scores)))
         avgcos_scores.append("%.2f" % (sum([float(score) for score in avgcos_scores]) / len(avgcos_scores)))
-        print_table(task_names, [scores, align_losses, uniform_losses, IW_scores, avgcos_scores])
+        disentanglement_scores.append("%.2f" % (sum([float(score) for score in disentanglement_scores]) / len(disentanglement_scores)))
+        print_table(task_names, [scores, align_losses, uniform_losses, IW_scores, avgcos_scores, disentanglement_scores])
 
         task_names = []
         scores = []
