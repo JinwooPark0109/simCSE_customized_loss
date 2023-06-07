@@ -45,315 +45,45 @@ def align_uniform_loss(cls, tup):
     return cos_sim, align_loss(z1, z2) + uniform_loss(z1)
 
 
-def original_contrastive_loss(cls, tup):
+#-----
+#control group
+
+def original_loss(cls, tup):
     '''
     contrastive loss from original code
     '''
-    z1, z2, z3 = tup
+    z1, z2, _ = tup
 
     cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-    # Hard negative
-    if z3:
-        z1_z3_cos = cls.sim(z1.unsqueeze(1), z3.unsqueeze(0))
-        cos_sim = torch.cat([cos_sim, z1_z3_cos], 1)
 
     labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
     loss_fct = torch.nn.CrossEntropyLoss()
 
-    # Calculate loss with hard negatives
-    if z3:
-        # Note that weights are actually logits of weights
-        z3_weight = cls.model_args.hard_negative_weight
-        weights = torch.tensor(
-            [[0.0] * (cos_sim.size(-1) - z1_z3_cos.size(-1)) + [0.0] * i + [z3_weight] + [0.0] * (
-                    z1_z3_cos.size(-1) - i - 1) for i in range(z1_z3_cos.size(-1))]
-        ).to(cls.device)
-        cos_sim = cos_sim + weights
-
-    # from IPython import embed; embed()
-    # sys.exit()
+    pos_sim=cos_sim.diagonal()
+    origin_neg_sim=cos_sim.clone().fill_diagonal_(torch.nan)
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim)
 
     loss = loss_fct(cos_sim, labels)
-
-    # print("original loss")
-    # print("input:", z1.shape, z2.shape, tup)
-    # print("cos sim:", cos_sim.shape, cos_sim)
-    # print("loss:", loss.item())
 
     return cos_sim, loss_fct(cos_sim, labels)
 
-def simcse_vne_loss(cls, tup):
 
+def original_label_smoothing_loss(cls, tup):
     z1, z2, _ = tup
 
     cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
 
     labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
-    loss_fct = torch.nn.CrossEntropyLoss()
+    loss_fct = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
 
-    loss=loss_fct(cos_sim, labels)-cls.coef*vne_loss(z1)
-    #print(loss_fct(cos_sim, labels).item(), vne_loss(z1).item())
-
-    return cos_sim, loss
-
-def simcse_inverse_unifomity_loss(cls, tup):
-    '''
-    contrastive loss from original code
-    '''
-    z1, z2, _ = tup
-
-    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
-    loss_fct = torch.nn.CrossEntropyLoss()
-
-    loss = loss_fct(cos_sim, labels) - cls.coef * uniform_loss(z1)
-    # loss = loss_fct(cos_sim, labels) + cls.coef * uniform_loss(z1)
-    # loss = loss_fct(cos_sim, labels)
-    print(loss_fct(cos_sim, labels).item(), uniform_loss(z1).item(),
-          torch.pdist(z1, p=2).pow(2).mul(-2).exp().mean().item())
-
-    return cos_sim, loss
-
-
-
-def simcse_fixed_neg_loss(cls, tup):
-    '''
-    contrastive loss from original code
-    '''
-    z1, z2, _ = tup
-
-    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
-    loss_fct = torch.nn.CrossEntropyLoss()
+    pos_sim=cos_sim.diagonal()
+    origin_neg_sim=cos_sim.clone().fill_diagonal_(torch.nan)
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim)
 
     loss = loss_fct(cos_sim, labels)
 
-    return cos_sim, loss
+    return cos_sim, loss_fct(cos_sim, labels)
 
-
-def simcse_fixed_vne_loss(cls, tup):
-    '''
-    contrastive loss from original code
-    '''
-    z1, z2, _ = tup
-
-    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
-    loss_fct = torch.nn.CrossEntropyLoss()
-
-    loss = loss_fct(cos_sim, labels) + cls.coef * vne_loss(z1 + cls.lower_bound)
-
-    return cos_sim, loss
-
-
-def original_detached_loss(cls, tup):
-    '''
-    contrastive loss from original code
-    '''
-    z1, z2, z3 = tup
-
-    pos_cos_sim = cls.sim(z1, z2).unsqueeze(1)
-    neg_cos_sim = cls.sim(z1.unsqueeze(1), z2.detach().clone().unsqueeze(0))
-    mask = torch.eye(pos_cos_sim.size(0)).to(cls.device)
-    cos_sim = pos_cos_sim * mask + neg_cos_sim * (1 - mask)
-
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
-    loss_fct = torch.nn.CrossEntropyLoss()
-
-    loss = loss_fct(cos_sim, labels)
-
-    return cos_sim, loss
-
-
-def original_pos_detached_loss(cls, tup):
-    '''
-    contrastive loss from original code
-    '''
-    z1, z2, z3 = tup
-
-    pos_cos_sim = cls.sim(z1, z2).unsqueeze(1).detach().clone()
-    neg_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-    mask = torch.eye(pos_cos_sim.size(0)).to(cls.device)
-    cos_sim = pos_cos_sim * mask + neg_cos_sim * (1 - mask)
-
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
-    loss_fct = torch.nn.CrossEntropyLoss()
-
-    loss = loss_fct(cos_sim, labels)
-
-    return cos_sim, loss
-
-
-def original_neg_detached_loss(cls, tup):
-    '''
-    contrastive loss from original code
-    '''
-    z1, z2, z3 = tup
-
-    pos_cos_sim = cls.sim(z1, z2).unsqueeze(1)
-    neg_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0)).detach().clone()
-    mask = torch.eye(pos_cos_sim.size(0)).to(cls.device)
-    cos_sim = pos_cos_sim * mask + neg_cos_sim * (1 - mask)
-
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
-    loss_fct = torch.nn.CrossEntropyLoss()
-
-    loss = loss_fct(cos_sim, labels)
-
-    return cos_sim, loss
-
-
-def original_rewrite_loss(cls, tup):
-    '''
-    contrastive loss from original code
-    '''
-    z1, z2, z3 = tup
-
-    sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-
-    pos_cos_sim = cls.sim(z1, z2).unsqueeze(1)
-    neg_cos_sim = torch.triu(sim, diagonal=1)[:, 1:] + torch.tril(sim, diagonal=-1)[:, :-1]  # bx(b-1)
-
-    cos_sim = torch.concat([pos_cos_sim, neg_cos_sim], dim=1)  # (b, b)
-    labels = torch.zeros(cos_sim.size(0)).long().to(cls.device)  # 0th is pos at all batch items.
-
-    loss_fct = torch.nn.CrossEntropyLoss()
-    loss = loss_fct(cos_sim, labels)
-
-    return cos_sim, loss
-
-
-def original_eye_loss(cls, tup):
-    '''
-    contrastive loss from original code
-    '''
-    z1, z2, z3 = tup
-
-    sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-    mask = torch.eye(sim.size(0)).to(cls.device)
-    cos_sim = sim * mask + sim * (1 - mask)
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
-
-    loss_fct = torch.nn.CrossEntropyLoss()
-    loss = loss_fct(cos_sim, labels)
-
-    return cos_sim, loss
-
-
-def tensor_contrastive_loss(cls, outputs, attention_mask):
-    batch_size = attention_mask.size(0)
-    num_sent = attention_mask.size(1)
-    hidden = outputs.last_hidden_state
-    hidden = hidden.view((*(attention_mask.shape), -1))  # b, num_sent, seq len, dim
-
-    z1, z2 = hidden[:, 0], hidden[:, 1]  # b, seq len, dim
-
-    # bxb
-    bxb_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-    bxb_labels = torch.arange(bxb_cos_sim.size(0)).long().to(cls.device)
-    # sxs
-    sxs_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-    sxs_labels = torch.arange(sxs_cos_sim.size(0)).long().to(cls.device)
-    # dxd
-    dxd_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-    dxd_labels = torch.arange(dxd_cos_sim.size(0)).long().to(cls.device)
-
-    loss_fct = torch.nn.CrossEntropyLoss()
-
-    bxb_loss = loss_fct(bxb_cos_sim, bxb_labels)
-    sxs_loss = loss_fct(sxs_cos_sim, sxs_labels)
-    dxd_loss = loss_fct(dxd_cos_sim, dxd_labels)
-
-    loss = bxb_loss + sxs_loss + dxd_loss
-
-    return loss
-
-
-def sbb_loss(cls, outputs, attention_mask):
-    batch_size = attention_mask.size(0)
-    num_sent = attention_mask.size(1)  # b,2,s
-    hidden = outputs.last_hidden_state
-    hidden = hidden.view((*(attention_mask.shape), -1))  # (b, num_sent, seq len, dim)
-
-    z1, z2 = hidden[:, 0], hidden[:, 1]  # b,s,d
-
-    sbb_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))  # (b,1,s,d)x(1,b,s,d) -> (b,b,s)
-    mask = attention_mask[:, 0, :]  # b,2,s -> b,s
-    mask = (mask.unsqueeze(2) * mask.unsqueeze(1)).bool()  # (b,s,1) + (b,1, s) -> (b,s,s)
-
-    cos_sim = sbb_cos_sim[mask]  # b,b, non pad only
-    cos_sim = cos_sim.permute(2, 1, 0).reshape(-1, batch_size)
-    sbb_labels = torch.arange(batch_size).long().to(cls.device).expand(cos_sim.size(0), 1)
-
-    loss_fct = torch.nn.CrossEntropyLoss()
-    loss = loss_fct(cos_sim, sbb_labels)
-
-    return cos_sim, loss
-
-
-def bss_loss(cls, outputs, attention_mask):
-    # compare token in each sentence, so negative pair is came from in-sequence instead of in-batch
-
-    batch_size, num_sent, seq_len = attention_mask.shape
-    hidden = outputs.last_hidden_state
-    hidden = hidden.view((*(attention_mask.shape), -1))  # (b, num_sent, seq len, dim)
-
-    z1, z2 = hidden[:, 0], hidden[:, 1]  # b,s,d
-
-    bss_cos_sim = cls.sim(z1.unsqueeze(2), z2.unsqueeze(1))  # (b,s,1,d)x(b,1,s,d)->(b,s,s)
-    no_pad_idx = attention_mask[:, 0, :]  # b,2,s -> b,s, all attention mask are same in each pair
-    no_pad_idx = (no_pad_idx.unsqueeze(2) * no_pad_idx.unsqueeze(1)).bool()  # (b,s,1) + (b,1, s) -> (b,s,s)
-
-    # from IPython import embed;embed()
-    pos_idx = no_pad_idx * (torch.eye(seq_len) == 1).bool().to(cls.device)
-
-    '''
-    bss_pos=bss_cos_sim[pos_idx]
-    bss_numerater=torch.sum(bss_pos, 0)
-    bss_denominator=bss_cos_sim[no_pad_idx].view(batch_size, -1)
-    loss=(-bss_numerater + torch.logsumexp(bss_denominator)).mean()
-    '''
-
-    loss = 0
-    for i in range(batch_size):
-        bss_numerater = (bss_cos_sim[i][pos_idx[i]]).sum()
-        bss_denominator = torch.logsumexp(bss_cos_sim[i][no_pad_idx[i]], 0)
-        loss += (-bss_numerater + bss_denominator)
-    # print("hi, I'm dummy for loop")
-
-    return loss
-
-
-def bb_dd_loss(cls, tup):
-    z1, z2, _ = tup  # b,d
-    loss_fct = torch.nn.CrossEntropyLoss()
-
-    bb_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))  # (b,1,d)x(1,b,d)=(b,b)
-    bb_labels = torch.arange(bb_cos_sim.size(0)).long().to(cls.device)
-    bb_loss = loss_fct(bb_cos_sim, bb_labels)
-
-    dd_cos_sim = cls.sim(z1.permute(1, 0).unsqueeze(1), z2.permute(1, 0).unsqueeze(0))  # (d,1,b)x(1,d,b)=(d,d)
-    dd_labels = torch.arange(dd_cos_sim.size(0)).long().to(cls.device)
-    dd_loss = loss_fct(dd_cos_sim, dd_labels)
-
-    loss = bb_loss + dd_loss
-
-    return bb_cos_sim, loss
-
-
-def negative_only_loss(cls, tup):
-    z1, z2, _ = tup  # b,d
-
-    batch_size, hidden_dim = z1.size()
-
-    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))  # (b,b)
-    neg_idx = torch.eye(batch_size) == 0
-
-    loss = torch.logsumexp(cos_sim[neg_idx].view(batch_size, -1), dim=1).mean()  # (b, b-1)
-    return cos_sim, loss
 
 
 def no_augmented_loss(cls, tup):
@@ -365,8 +95,46 @@ def no_augmented_loss(cls, tup):
     labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
     loss_fct = torch.nn.CrossEntropyLoss()
 
+    pos_sim=cos_sim.diagonal()
+    origin_neg_sim=cos_sim.clone().fill_diagonal_(torch.nan)
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim)
+
     loss = loss_fct(cos_sim, labels)
     return cos_sim, loss
+
+
+def positive_only_loss(cls, tup):
+    z1, z2, _ = tup  # b,d
+
+    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    mask = torch.eye(cos_sim.size(0)).to(cls.device)
+    cos_sim = cos_sim * mask
+
+    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
+    loss_fct = torch.nn.CrossEntropyLoss()
+
+    pos_sim=cos_sim.diagonal()
+    origin_neg_sim=cos_sim.clone().fill_diagonal_(torch.nan)
+    cls.log_sim(pos_sim=pos_sim)
+
+    loss = loss_fct(cos_sim, labels)
+    return cos_sim, loss
+
+
+def negative_only_loss(cls, tup):
+    z1, z2, _ = tup  # b,d
+
+    batch_size, hidden_dim = z1.size()
+
+    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))  # (b,b)
+    neg_idx = torch.eye(batch_size) == 0
+
+    origin_neg_sim=cos_sim.clone().fill_diagonal_(torch.nan)
+    cls.log_sim(origin_neg_sim=origin_neg_sim)
+
+    loss = torch.logsumexp(cos_sim[neg_idx].view(batch_size, -1), dim=1).mean()  # (b, b-1)
+    return cos_sim, loss
+
 
 
 def no_augmented_label_smoothing_loss(cls, tup):
@@ -378,267 +146,534 @@ def no_augmented_label_smoothing_loss(cls, tup):
     labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
     loss_fct = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
 
-    loss = loss_fct(cos_sim, labels)
-    return cos_sim, loss
-
-
-def no_augmented_label_smoothing_double_loss(cls, tup):
-    # print("no augmented label smoothing")
-    z1, _, _ = tup  # b,d
-
-    cos_sim = cls.sim(z1.unsqueeze(1), z1.unsqueeze(0))
-
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
-    loss_fct = torch.nn.CrossEntropyLoss(label_smoothing=0.2)
+    pos_sim=cos_sim.diagonal()
+    origin_neg_sim=cos_sim.clone().fill_diagonal_(torch.nan)
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim)
 
     loss = loss_fct(cos_sim, labels)
     return cos_sim, loss
 
 
-def no_augmented_band_loss(cls, tup):
-    # print("no augmented label smoothing")
-    z1, _, _ = tup  # b,d
 
-    cos_sim = cls.sim(z1.unsqueeze(1), z1.unsqueeze(0) + z1.std(0))
-
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
-    loss_fct = torch.nn.CrossEntropyLoss()
-
-    loss = loss_fct(cos_sim, labels)
-    return cos_sim, loss
-
-
-def original_label_smoothing_loss(cls, tup):
+def original_no_pos_in_denominator_loss(cls, tup):
+    '''
+    contrastive loss from original code
+    '''
     z1, z2, _ = tup
 
     cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
 
+
     labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
-    loss_fct = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
+    loss_fct = torch.nn.CrossEntropyLoss()
+
+
+    pos_sim=cos_sim.diagonal()
+    origin_neg_sim=cos_sim.clone().fill_diagonal_(torch.nan)
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim)
 
     loss = loss_fct(cos_sim, labels)
-    return cos_sim, loss
+
+    return cos_sim, loss_fct(cos_sim, labels)
 
 
-def no_augmented_detached_loss(cls, tup):
-    # print("no augmented")
-    z1, _, _ = tup  # b,d
-
-    z2 = z1.detach().clone()
-
-    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
-    loss_fct = torch.nn.CrossEntropyLoss()
-
-    loss = loss_fct(cos_sim, labels)
-    return cos_sim, loss
 
 
-def really_dummy_positive_loss(cls, tup):
-    # print("really dummy positive")
-    z1, _, _ = tup  # b,d
+#------------------------
+#experiment
 
-    cos_sim = cls.sim(z1.unsqueeze(1), z1.unsqueeze(0))  # now there is only in-batch negative
-    cos_sim.fill_diagonal_(1.0 / cls.sim.temp)  # set always 1
+def k_normal_z_mean_z_std_sampling_loss(cls, tup):
+    # best setup for report
 
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
-    loss_fct = torch.nn.CrossEntropyLoss()
-
-    loss = loss_fct(cos_sim, labels)
-    return cos_sim, loss
-
-
-def noise_add_positive_loss(cls, tup):
-    # print("noisy add positive")
-    z1, _, _ = tup  # b,d
-
-    z2 = z1 + torch.normal(mean=0, std=1, size=z1.shape).to(cls.device)  # d(x+noise)/dx=1
-    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
-    loss_fct = torch.nn.CrossEntropyLoss()
-
-    loss = loss_fct(cos_sim, labels)  #
-    return cos_sim, loss
-
-
-def noise_add_simlar_loss(cls, tup):
-    # print("noisy add similar")
-    z1, _, _ = tup  # b,d
+    z1, z2, _ = tup  # b,d
 
     noise_list = []
-    zero = torch.zeros(z1.size(1)).to(cls.device)  # d
-    z_std = z1.std(0)  # d
-    for _ in z1:
-        noise_list.append(torch.normal(mean=zero, std=z_std))
-    noise = torch.stack(noise_list).to(cls.device)
-
-    z2 = z1 + noise  # d(x+noise)/dx=1
-    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
-    loss_fct = torch.nn.CrossEntropyLoss()
-
-    loss = loss_fct(cos_sim, labels)  #
-    return cos_sim, loss
-
-
-def noise_add_label_smoothing_loss(cls, tup):
-    # print("noise_add_label_smoothing_loss")
-    z1, _, _ = tup  # b,d
-
-    z2 = z1 + torch.normal(mean=0, std=1, size=z1.shape).to(cls.device)  # d(x+noise)/dx=1
-    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
-    loss_fct = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
-
-    loss = loss_fct(cos_sim, labels)  #
-    return cos_sim, loss
-
-
-def noise_add_similar_label_smoothing_loss(cls, tup):
-    # print("noise_add_label_smoothing_loss")
-    z1, _, _ = tup  # b,d
-
-    noise_list = []
-    zero = torch.zeros(z1.size(1)).to(cls.device)  # d
-    z_std = z1.std(0)  # d
-    for _ in z1:
-        noise_list.append(torch.normal(mean=zero, std=z_std))
-    noise = torch.stack(noise_list).to(cls.device)
-
-    z2 = z1 + noise  # d(x+noise)/dx=1
-    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
-    loss_fct = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
-
-    loss = loss_fct(cos_sim, labels)  #
-    return cos_sim, loss
-
-
-def noise_add_simlar_detached_loss(cls, tup):
-    # print("noisy add similar")
-    z1, _, _ = tup  # b,d
-
-    noise_list = []
-    zero = torch.zeros(z1.size(1)).to(cls.device)  # d
-    z_std = z1.std(0)  # d
-    for _ in z1:
-        noise_list.append(torch.normal(mean=zero, std=z_std))
+    z_mean = z1.mean(0)
+    z_std = z1.std(0)
+    for _ in range(z1.size(0) * cls.k):
+        noise_list.append(torch.normal(mean=z_mean, std=z_std))
     noise = torch.stack(noise_list)
 
-    z2 = (z1.clone().detach() + noise).to(cls.device)
-    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    origin_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    generated_neg_sim = cls.sim(z1.unsqueeze(1), noise.unsqueeze(0))  # (b,1,d)x(1,2b,d)=(bx2b)
 
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
+    pos_sim=origin_cos_sim.diagonal()
+    origin_neg_sim=origin_cos_sim.clone().fill_diagonal_(torch.nan)
+
+    cos_sim = torch.concat([origin_cos_sim, generated_neg_sim], dim=1)  # (b, 3b)
+
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim, generated_neg_sim= generated_neg_sim)
+
+    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)  # b
+    loss_fct = torch.nn.CrossEntropyLoss()
+
+    loss = loss_fct(cos_sim, labels)  #
+    return cos_sim, loss
+
+#----------
+
+def memory_bank_loss(cls, tup):
+    z1, z2, _ = tup  # b,d
+
+    noise_list = []
+    z_mean = z1.mean(0)
+    z_std = z1.std(0)
+
+    noise = cls.get_prev_buffer(z1)
+    if len(noise) > 0:
+        noise=torch.tensor(np.concatenate(noise, axis=0), device=cls.device)
+        origin_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+        generated_neg_sim = cls.sim(z1.unsqueeze(1), noise.unsqueeze(0))  # (b,1,d)x(1,2b,d)=(bx2b)
+
+        pos_sim = origin_cos_sim.diagonal()
+        origin_neg_sim = origin_cos_sim.clone().fill_diagonal_(torch.nan)
+
+        cos_sim = torch.concat([origin_cos_sim, generated_neg_sim], dim=1)  # (b, 3b)
+        cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim, generated_neg_sim=generated_neg_sim)
+    else:
+        cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+        pos_sim = cos_sim.diagonal()
+        origin_neg_sim = cos_sim.clone().fill_diagonal_(torch.nan)
+        generated_neg_sim = torch.tensor([0.0]) #dummy
+        cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim, generated_neg_sim=generated_neg_sim)
+
+    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)  # b
     loss_fct = torch.nn.CrossEntropyLoss()
 
     loss = loss_fct(cos_sim, labels)  #
     return cos_sim, loss
 
 
-def noise_mul_positive_loss(cls, tup):
-    # print("noisy mul positive")
-    z1, _, _ = tup  # b,d
+def k_normal_zero_mean_z_std_add_loss(cls, tup):
+    # print("noisy add similar")
+    z1, z2, _ = tup  # b,d
 
-    z2 = z1 * torch.normal(mean=0, std=1, size=z1.shape).to(cls.device)  # d(x*noise)/dx=noise
-    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    noise_list = []
+    zero = torch.zeros(z1.size(1)).to(cls.device)  # d
+    z_std = z1.std(0)  # d
+    for _ in range(z1.size(0)*cls.k):
+        noise_list.append(torch.normal(mean=zero, std=z_std))
+    noise = (z1.clone().detach()+torch.stack(noise_list)).to(cls.device)
 
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
+    origin_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    generated_neg_sim = cls.sim(z1.unsqueeze(1), noise.unsqueeze(0))  # (b,1,d)x(1,2b,d)=(bx2b)
+
+    pos_sim=origin_cos_sim.diagonal()
+    origin_neg_sim=origin_cos_sim.clone().fill_diagonal_(torch.nan)
+
+    cos_sim = torch.concat([origin_cos_sim, generated_neg_sim], dim=1)  # (b, 3b)
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim, generated_neg_sim= generated_neg_sim)
+
+    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)  # b
+    loss_fct = torch.nn.CrossEntropyLoss()
+
+    loss = loss_fct(cos_sim, labels)
+    return cos_sim, loss
+
+
+def k_cov_z_mean_z_std_sampling_loss(cls, tup):
+    z1, z2, _ = tup  # b,d
+
+    noise_list = []
+    z_mean = z1.mean(0)
+    z_std = z1.std(0)
+    cov_mat = torch.cov(z1.T)
+    for _ in range(z1.size(0)):
+        noise_list.append(torch.matmul(torch.normal(mean=z_mean, std=z_std), cov_mat))
+    noise = torch.stack(noise_list)
+
+    origin_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    generated_neg_sim = cls.sim(z1.unsqueeze(1), noise.unsqueeze(0))  # (b,1,d)x(1,2b,d)=(bx2b)
+
+    pos_sim=origin_cos_sim.diagonal()
+    origin_neg_sim=origin_cos_sim.clone().fill_diagonal_(torch.nan)
+
+    cos_sim = torch.concat([origin_cos_sim, generated_neg_sim], dim=1)  # (b, 3b)
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim, generated_neg_sim= generated_neg_sim)
+
+    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)  # b
+    loss_fct = torch.nn.CrossEntropyLoss()
+
+    loss = loss_fct(cos_sim, labels)
+    return cos_sim, loss
+
+
+def k_vae_sampling_loss(cls, tup):
+    z1, z2, _ = tup  # b,d
+
+    cls.update_vae(z1.clone().detach())
+    noise = cls.vae_sampling(z1.size(0) * cls.k)
+
+    origin_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    generated_neg_sim = cls.sim(z1.unsqueeze(1), noise.unsqueeze(0))  # (b,1,d)x(1,2b,d)=(bx2b)
+
+    pos_sim=origin_cos_sim.diagonal()
+    origin_neg_sim=origin_cos_sim.clone().fill_diagonal_(torch.nan)
+
+    cos_sim = torch.concat([origin_cos_sim, generated_neg_sim], dim=1)  # (b, 3b)
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim, generated_neg_sim= generated_neg_sim)
+
+    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)  # b
+    loss_fct = torch.nn.CrossEntropyLoss()
+
+    loss = loss_fct(cos_sim, labels)
+    return cos_sim, loss
+
+
+def k_gmm_sampling_loss(cls, tup):
+    z1, z2, _ = tup  # b,d
+
+    cls.update_gmm(z1)
+    noise = cls.gmm_sampling(z1.size(0) * cls.k)
+
+    origin_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    generated_neg_sim = cls.sim(z1.unsqueeze(1), noise.unsqueeze(0))  # (b,1,d)x(1,2b,d)=(bx2b)
+
+    pos_sim=origin_cos_sim.diagonal()
+    origin_neg_sim=origin_cos_sim.clone().fill_diagonal_(torch.nan)
+
+    cos_sim = torch.concat([origin_cos_sim, generated_neg_sim], dim=1)  # (b, 3b)
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim, generated_neg_sim= generated_neg_sim)
+
+    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)  # b
+    loss_fct = torch.nn.CrossEntropyLoss()
+
+    loss = loss_fct(cos_sim, labels)
+    return cos_sim, loss
+
+def k_normal_z_mean_z_std_sampling_wo_inbatch_loss(cls, tup):
+    # print("easy origin negative")
+    z1, z2, _ = tup  # b,d
+
+    noise_list = []
+    z_mean = z1.mean(0)
+    z_std = z1.std(0)
+    for _ in range(z1.size(0) * cls.k):
+        noise_list.append(torch.normal(mean=z_mean, std=z_std))
+    noise = torch.stack(noise_list)
+
+    origin_cos_sim = cls.sim(z1, z2).unsqueeze(1)  # (b,1)
+    generated_neg_sim = cls.sim(z1.unsqueeze(1), noise.unsqueeze(0))  # remove diagnoal
+    generated_neg_sim = torch.triu(generated_neg_sim, diagonal=1)[:, 1:] + torch.tril(generated_neg_sim, diagonal=-1)[:,
+                                                                 :-1]  # bx(b-1)
+
+    cos_sim = torch.concat([origin_cos_sim, generated_neg_sim], dim=1)  # (b, b+1)
+
+    origin_neg_sim=cls.sim(z1.unsqueeze(1), z2.unsqueeze(0)).clone().fill_diagonal_(torch.nan)
+
+    cls.log_sim(pos_sim=origin_cos_sim, origin_neg_sim=origin_neg_sim, generated_neg_sim=generated_neg_sim)
+
+    labels = torch.zeros(cos_sim.size(0)).long().to(cls.device)  # 0th is pos at all batch items.
     loss_fct = torch.nn.CrossEntropyLoss()
 
     loss = loss_fct(cos_sim, labels)  #
     return cos_sim, loss
 
 
-def noise_mul_one_loss(cls, tup):
-    # print("noisy mul positive")
-    z1, _, _ = tup  # b,d
+#------------------------------------------
+#positive augment
 
-    z2 = z1 * torch.normal(mean=1, std=1, size=z1.shape).to(cls.device)  # d(x*noise)/dx=noise
-    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+
+def original_reshape_loss(cls, tup):
+    z1, z2, _ = tup
+    pos=z2
+
+    pos_sim = cls.sim(z1, pos).unsqueeze(1)  # (b,1)
+    origin_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    origin_neg_sim = torch.triu(origin_sim, diagonal=1)[:, 1:] +\
+                   torch.tril(origin_sim, diagonal=-1)[:,:-1]  # (b, b-1)
+
+    cos_sim = torch.concat([pos_sim, origin_neg_sim], dim=1)  # (b, b)
+
+    labels = torch.zeros(cos_sim.size(0)).long().to(cls.device) #[0, :] is pos at all batch item
+    loss_fct = torch.nn.CrossEntropyLoss()
+
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim)
+
+    loss = loss_fct(cos_sim, labels)
+
+    return cos_sim, loss
+
+
+def original_reshape_detached_loss(cls, tup):
+    z1, z2, _ = tup
+    pos= z2.detach()
+
+    pos_sim = cls.sim(z1, pos).unsqueeze(1)  # (b,1)
+    origin_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    origin_neg_sim = torch.triu(origin_sim, diagonal=1)[:, 1:] +\
+                   torch.tril(origin_sim, diagonal=-1)[:,:-1]  # (b, b-1)
+
+    cos_sim = torch.concat([pos_sim, origin_neg_sim], dim=1)  # (b, b)
+
+    labels = torch.zeros(cos_sim.size(0)).long().to(cls.device) #[0, :] is pos at all batch item
+    loss_fct = torch.nn.CrossEntropyLoss()
+
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim)
+
+    loss = loss_fct(cos_sim, labels)
+
+    return cos_sim, loss
+
+
+def zero_mean_z_std_add_pos_loss(cls, tup):
+    z1, z2, _ = tup
+
+    #pos= z1+torch.normal(mean=torch.zeros(z1.size()), std=z1.std(1)).to(cls.device)
+    pos_list = []
+    zero = torch.zeros(z1.size(1)).to(cls.device)  # d
+    z_std = z1.std(0)  # d
+    for _ in range(z1.size(0)*cls.k):
+        pos_list.append(torch.normal(mean=zero, std=z_std))
+    pos = (z1+torch.stack(pos_list)).to(cls.device)
+
+    pos_sim = cls.sim(z1, pos).unsqueeze(1)  # (b,1)
+    origin_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    origin_neg_sim = torch.triu(origin_sim, diagonal=1)[:, 1:] +\
+                   torch.tril(origin_sim, diagonal=-1)[:,:-1]  # (b, b-1)
+
+    cos_sim = torch.concat([pos_sim, origin_neg_sim], dim=1)  # (b, b)
+
+    labels = torch.zeros(cos_sim.size(0)).long().to(cls.device) #[0, :] is pos at all batch item
+    loss_fct = torch.nn.CrossEntropyLoss()
+
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim)
+
+    loss = loss_fct(cos_sim, labels)
+
+    return cos_sim, loss
+
+def zero_mean_z_std_add_pos_detached_loss(cls, tup):
+    z1, z2, _ = tup
+
+    #pos= detached_z1+torch.normal(mean=torch.zeros(detached_z1.size(1)).to(cls.device), std=detached_z1.std(1))
+    pos_list = []
+    zero = torch.zeros(z1.size(1)).to(cls.device)  # d
+    z_std = z1.std(0)  # d
+    for _ in range(z1.size(0)*cls.k):
+        pos_list.append(torch.normal(mean=zero, std=z_std))
+    pos = (z1.clone().detach()+torch.stack(pos_list)).to(cls.device)
+
+    pos_sim = cls.sim(z1, pos).unsqueeze(1)  # (b,1)
+    origin_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    origin_neg_sim = torch.triu(origin_sim, diagonal=1)[:, 1:] +\
+                   torch.tril(origin_sim, diagonal=-1)[:,:-1]  # (b, b-1)
+
+    cos_sim = torch.concat([pos_sim, origin_neg_sim], dim=1)  # (b, b)
+
+    labels = torch.zeros(cos_sim.size(0)).long().to(cls.device) #[0, :] is pos at all batch item
+    loss_fct = torch.nn.CrossEntropyLoss()
+
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim)
+
+    loss = loss_fct(cos_sim, labels)
+
+    return cos_sim, loss
+
+
+def zero_mean_z_std_add_pos_smoothing_loss(cls, tup):
+    z1, z2, _ = tup
+
+    #pos= z1+torch.normal(mean=torch.zeros(z1.size()), std=z1.std(1)).to(cls.device)
+    pos_list = []
+    zero = torch.zeros(z1.size(1)).to(cls.device)  # d
+    z_std = z1.std(0)  # d
+    for _ in range(z1.size(0)*cls.k):
+        pos_list.append(torch.normal(mean=zero, std=z_std))
+    pos = (z1+torch.stack(pos_list)).to(cls.device)
+
+    pos_sim = cls.sim(z1, pos).unsqueeze(1)  # (b,1)
+    origin_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    origin_neg_sim = torch.triu(origin_sim, diagonal=1)[:, 1:] +\
+                   torch.tril(origin_sim, diagonal=-1)[:,:-1]  # (b, b-1)
+
+    cos_sim = torch.concat([pos_sim, origin_neg_sim], dim=1)  # (b, b)
+
+    labels = torch.zeros(cos_sim.size(0)).long().to(cls.device) #[0, :] is pos at all batch item
+    loss_fct = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
+
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim)
+
+    loss = loss_fct(cos_sim, labels)
+
+    return cos_sim, loss
+
+
+def bernoulli_pos_loss(cls, tup):
+    z1, z2, _ = tup
+
+    pos= z1*torch.bernoulli(torch.full(z1.shape, 0.9)).to(cls.device)
+
+    pos_sim = cls.sim(z1, pos).unsqueeze(1)  # (b,1)
+    origin_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    origin_neg_sim = torch.triu(origin_sim, diagonal=1)[:, 1:] +\
+                   torch.tril(origin_sim, diagonal=-1)[:,:-1]  # (b, b-1)
+
+    cos_sim = torch.concat([pos_sim, origin_neg_sim], dim=1)  # (b, b)
+
+    labels = torch.zeros(cos_sim.size(0)).long().to(cls.device) #[0, :] is pos at all batch item
+    loss_fct = torch.nn.CrossEntropyLoss()
+
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim)
+
+    loss = loss_fct(cos_sim, labels)
+
+    return cos_sim, loss
+
+
+def bernoulli_pos_detached_loss(cls, tup):
+    z1, z2, _ = tup
+
+    detached_z1=z1.detach()
+    pos= detached_z1*torch.bernoulli(torch.full(z1.shape, 0.9)).to(cls.device)
+
+    pos_sim = cls.sim(z1, pos).unsqueeze(1)  # (b,1)
+    origin_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    origin_neg_sim = torch.triu(origin_sim, diagonal=1)[:, 1:] +\
+                   torch.tril(origin_sim, diagonal=-1)[:,:-1]  # (b, b-1)
+
+    cos_sim = torch.concat([pos_sim, origin_neg_sim], dim=1)  # (b, b)
+
+    labels = torch.zeros(cos_sim.size(0)).long().to(cls.device) #[0, :] is pos at all batch item
+    loss_fct = torch.nn.CrossEntropyLoss()
+
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim)
+
+    loss = loss_fct(cos_sim, labels)
+
+    return cos_sim, loss
+
+
+def bernoulli_pos_smoothing_loss(cls, tup):
+    z1, z2, _ = tup
+
+    pos= z1*torch.bernoulli(torch.full(z1.shape, 0.9)).to(cls.device)
+
+    pos_sim = cls.sim(z1, pos).unsqueeze(1)  # (b,1)
+    origin_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    origin_neg_sim = torch.triu(origin_sim, diagonal=1)[:, 1:] +\
+                   torch.tril(origin_sim, diagonal=-1)[:,:-1]  # (b, b-1)
+
+    cos_sim = torch.concat([pos_sim, origin_neg_sim], dim=1)  # (b, b)
+
+    labels = torch.zeros(cos_sim.size(0)).long().to(cls.device) #[0, :] is pos at all batch item
+    loss_fct = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
+
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim)
+
+    loss = loss_fct(cos_sim, labels)
+
+    return cos_sim, loss
+
+
+
+def fgsm_1_1_pos_loss(cls, tup):
+    z1, z2, _ = tup
+
+    original_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    mask = torch.full(original_cos_sim.size(), 1)
+    mask=mask.fill_diagonal_(-1).to(cls.device)
+    cos_sim=torch.clip(original_cos_sim*mask, min=0, max=20)
 
     labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
     loss_fct = torch.nn.CrossEntropyLoss()
 
-    loss = loss_fct(cos_sim, labels)  #
-    return cos_sim, loss
+    pos_sim=cos_sim.diagonal()
+    origin_neg_sim=cos_sim.clone().fill_diagonal_(torch.nan)
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim)
 
-def noise_mul_bernoulli_mask_loss(cls, tup):
-    # print("noisy mul bernoulli")
-    z1, _, _ = tup  # b,d
+    loss = loss_fct(cos_sim, labels)
 
-    z2 = z1 * torch.bernoulli(torch.full(z1.shape, 0.9)).to(cls.device)  # d(x*noise)/dx=noise
-    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    return cos_sim, loss_fct(cos_sim, labels)
 
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
-    loss_fct = torch.nn.CrossEntropyLoss()
 
-    loss = loss_fct(cos_sim, labels)  #
-    return cos_sim, loss
+def fgsm_01_1_pos_loss(cls, tup):
+    z1, z2, _ = tup
 
-def noise_mul_bernoulli_mask_08_loss(cls, tup):
-    # print("noisy mul bernoulli")
-    z1, _, _ = tup  # b,d
-
-    z2 = z1 * torch.bernoulli(torch.full(z1.shape, 0.8)).to(cls.device)  # d(x*noise)/dx=noise
-    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    original_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    mask = torch.full(original_cos_sim.size(), 0.1)
+    mask = mask.fill_diagonal_(-1).to(cls.device)
+    cos_sim = torch.clip(original_cos_sim * mask, min=0, max=20)
 
     labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
     loss_fct = torch.nn.CrossEntropyLoss()
 
-    loss = loss_fct(cos_sim, labels)  #
-    return cos_sim, loss
+    pos_sim = cos_sim.diagonal()
+    origin_neg_sim = cos_sim.clone().fill_diagonal_(torch.nan)
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim)
+
+    loss = loss_fct(cos_sim, labels)
+
+    return cos_sim, loss_fct(cos_sim, labels)
 
 
-def noise_mul_bernoulli_mask_05_loss(cls, tup):
-    # print("noisy mul bernoulli")
-    z1, _, _ = tup  # b,d
+def fgsm_batch_1_pos_loss(cls, tup):
+    z1, z2, _ = tup
 
-    z2 = z1 * torch.bernoulli(torch.full(z1.shape, 0.5)).to(cls.device)  # d(x*noise)/dx=noise
-    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
-    loss_fct = torch.nn.CrossEntropyLoss()
-
-    loss = loss_fct(cos_sim, labels)  #
-    return cos_sim, loss
-
-
-def noise_mul_bernoulli_mask_detached_loss(cls, tup):
-    # print("noisy mul bernoulli")
-    z1, _, _ = tup  # b,d
-
-    z2 = z1.detach() * torch.bernoulli(torch.full(z1.shape, 0.9)).to(cls.device)  # d(x*noise)/dx=noise
-    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    original_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    mask = torch.full(original_cos_sim.size(), 1/(z1.size(0)-1))
+    mask = mask.fill_diagonal_(-1).to(cls.device)
+    cos_sim = torch.clip(original_cos_sim * mask, min=0, max=20)
 
     labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
     loss_fct = torch.nn.CrossEntropyLoss()
 
-    loss = loss_fct(cos_sim, labels)  #
-    return cos_sim, loss
+    pos_sim = cos_sim.diagonal()
+    origin_neg_sim = cos_sim.clone().fill_diagonal_(torch.nan)
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim)
+
+    loss = loss_fct(cos_sim, labels)
+
+    return cos_sim, loss_fct(cos_sim, labels)
 
 
-def noise_add_3view_loss(cls, tup):
-    # print("noisy add 3view")
-    z1, _, _ = tup  # b,d
 
-    z2 = z1 + torch.normal(mean=0, std=1, size=z1.shape).to(cls.device)
-    z3 = z1 + torch.normal(mean=0, std=1, size=z1.shape).to(cls.device)
+def fgsm_batch_1_pos_smoothing_loss(cls, tup):
+    z1, z2, _ = tup
 
-    cos_sim_12 = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-    cos_sim_23 = cls.sim(z2.unsqueeze(1), z3.unsqueeze(0))
-    cos_sim_31 = cls.sim(z3.unsqueeze(1), z1.unsqueeze(0))
+    original_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    mask = torch.full(original_cos_sim.size(), 1/(z1.size(0)-1))
+    mask = mask.fill_diagonal_(-1).to(cls.device)
+    cos_sim = torch.clip(original_cos_sim * mask, min=0, max=20)
 
-    labels = torch.arange(cos_sim_12.size(0)).long().to(cls.device)
-    loss_fct = torch.nn.CrossEntropyLoss()
+    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
+    loss_fct = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
 
-    loss = loss_fct(cos_sim_12, labels) + loss_fct(cos_sim_23, labels) + loss_fct(cos_sim_31, labels)
-    return cos_sim_12, loss
+    pos_sim = cos_sim.diagonal()
+    origin_neg_sim = cos_sim.clone().fill_diagonal_(torch.nan)
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim)
 
+    loss = loss_fct(cos_sim, labels)
+
+    return cos_sim, loss_fct(cos_sim, labels)
+
+
+def fgsm_real_pos_loss(cls, tup):
+
+    z1, z2, _ = tup
+
+    original_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    mask = torch.full(original_cos_sim.size(), 1/(z1.size(0)-1))
+    mask = mask.fill_diagonal_(-1).to(cls.device)
+    cos_sim = torch.clip(original_cos_sim * mask, min=0, max=20)
+
+
+
+
+    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
+    loss_fct = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
+
+    pos_sim = cos_sim.diagonal()
+    origin_neg_sim = cos_sim.clone().fill_diagonal_(torch.nan)
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim)
+
+    loss = loss_fct(cos_sim, labels)
+
+    return cos_sim, loss_fct(cos_sim, labels)
+
+
+
+#------------------------------------------
 
 def very_easy_negative_loss(cls, tup):
     # print("very easy negative")
@@ -952,28 +987,6 @@ def many_easy_origin_negative_loss(cls, tup):
     return cos_sim, loss
 
 
-def k_easy_origin_negative_loss(cls, tup):
-    # print("easy easy origin negative")
-    z1, z2, _ = tup  # b,d
-
-    noise_list = []
-    z_mean = z1.mean(0)
-    z_std = z1.std(0)
-    for _ in range(z1.size(0) * cls.k):
-        noise_list.append(torch.normal(mean=z_mean, std=z_std))
-    noise = torch.stack(noise_list)
-
-    origin_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-    easy_cos_sim = cls.sim(z1.unsqueeze(1), noise.unsqueeze(0))  # (b,1,d)x(1,2b,d)=(bx2b)
-
-    cos_sim = torch.concat([origin_cos_sim, easy_cos_sim], dim=1)  # (b, 3b)
-
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)  # b
-
-    loss_fct = torch.nn.CrossEntropyLoss()
-
-    loss = loss_fct(cos_sim, labels)  #
-    return cos_sim, loss
 
 
 def easy_origin_negative_wo_inbatch_loss(cls, tup):
@@ -1019,32 +1032,6 @@ def many_very_easy_origin_negative_loss(cls, tup):
     loss = loss_fct(cos_sim, labels)  #
     return cos_sim, loss
 
-
-def easy_cov_origin_loss(cls, tup):
-    # print("easy origin negative")
-    z1, z2, _ = tup  # b,d
-
-    noise_list = []
-    z_mean = z1.mean(0)
-    z_std = z1.std(0)
-    cov_mat = torch.cov(z1.T)
-    for _ in range(z1.size(0)):
-        noise_list.append(torch.matmul(torch.normal(mean=z_mean, std=z_std), cov_mat))
-    noise = torch.stack(noise_list)
-
-    origin_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-    easy_cos_sim = cls.sim(z1.unsqueeze(1), noise.unsqueeze(0))
-
-    cls.log_sim(origin_cos_sim, easy_cos_sim)
-
-    cos_sim = torch.concat([origin_cos_sim, easy_cos_sim], dim=1)  # (b, 2b)
-
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)  # b
-
-    loss_fct = torch.nn.CrossEntropyLoss()
-
-    loss = loss_fct(cos_sim, labels)  #
-    return cos_sim, loss
 
 
 def very_easy_cov_origin_loss(cls, tup):
@@ -1431,29 +1418,6 @@ def k_gmm_buffer_periodic_update_loss(cls, tup):
     return cos_sim, loss
 
 
-def k_N_buffer_loss(cls, tup):
-    # print("easy origin negative")
-    z1, z2, _ = tup  # b,d
-
-    noise_list = []
-    z_mean, z_std = cls.get_buffer_mean_and_std(z1)
-    for _ in range(z1.size(0)):
-        noise_list.append(torch.normal(mean=z_mean, std=z_std))
-    noise = torch.stack(noise_list).to(cls.device)
-
-    origin_cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-    easy_cos_sim = cls.sim(z1.unsqueeze(1), noise.unsqueeze(0))
-
-    cos_sim = torch.concat([origin_cos_sim, easy_cos_sim], dim=1)  # (b, 2b)
-
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)  # b
-
-    loss_fct = torch.nn.CrossEntropyLoss()
-
-    loss = loss_fct(cos_sim, labels)  #
-    return cos_sim, loss
-
-
 def k_vae_loss(cls, tup):
     z1, z2, _ = tup  # b,d
 
@@ -1656,6 +1620,41 @@ def supercom_intensive_test_loss(cls, tup):
     return cos_sim, loss
 
 
+
+#dummy
+def bss_loss(cls, outputs, attention_mask):
+    # compare token in each sentence, so negative pair is came from in-sequence instead of in-batch
+
+    batch_size, num_sent, seq_len = attention_mask.shape
+    hidden = outputs.last_hidden_state
+    hidden = hidden.view((*(attention_mask.shape), -1))  # (b, num_sent, seq len, dim)
+
+    z1, z2 = hidden[:, 0], hidden[:, 1]  # b,s,d
+
+    bss_cos_sim = cls.sim(z1.unsqueeze(2), z2.unsqueeze(1))  # (b,s,1,d)x(b,1,s,d)->(b,s,s)
+    no_pad_idx = attention_mask[:, 0, :]  # b,2,s -> b,s, all attention mask are same in each pair
+    no_pad_idx = (no_pad_idx.unsqueeze(2) * no_pad_idx.unsqueeze(1)).bool()  # (b,s,1) + (b,1, s) -> (b,s,s)
+
+    # from IPython import embed;embed()
+    pos_idx = no_pad_idx * (torch.eye(seq_len) == 1).bool().to(cls.device)
+
+    '''
+    bss_pos=bss_cos_sim[pos_idx]
+    bss_numerater=torch.sum(bss_pos, 0)
+    bss_denominator=bss_cos_sim[no_pad_idx].view(batch_size, -1)
+    loss=(-bss_numerater + torch.logsumexp(bss_denominator)).mean()
+    '''
+
+    loss = 0
+    for i in range(batch_size):
+        bss_numerater = (bss_cos_sim[i][pos_idx[i]]).sum()
+        bss_denominator = torch.logsumexp(bss_cos_sim[i][no_pad_idx[i]], 0)
+        loss += (-bss_numerater + bss_denominator)
+    # print("hi, I'm dummy for loop")
+
+    return loss
+
+
 '''
 def mixup_loss(cls,tup):
     print("noisy positive")
@@ -1687,21 +1686,3 @@ def get_cl_loss(loss_name=None):
         print(f"{loss_name} not implemented yet\n")
         sys.exit()
     return loss
-
-
-'''
-def get_cl_loss(loss_name=None):
-    if not loss_name:
-        return None
-    if loss_name=="align_uniform_loss":
-        return align_uniform_loss
-    elif loss_name=="original_contrastive_loss":
-        return original_contrastive_loss
-    elif loss_name=="negative_only_loss":
-        return negative_only_loss
-    elif loss_name=="really_dummy_positive_loss":
-        return really_dummy_positive_loss
-    else:
-        raise ValueError("not implemented yet")
-
-'''

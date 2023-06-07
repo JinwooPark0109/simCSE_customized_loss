@@ -41,7 +41,7 @@ from transformers.trainer_callback import (
     ProgressCallback,
     TrainerCallback,
     TrainerControl,
-    TrainerState,
+    #TrainerState,
 )
 from transformers.trainer_pt_utils import (
     reissue_pt_warnings,
@@ -85,6 +85,11 @@ import senteval
 import numpy as np
 from datetime import datetime
 from filelock import FileLock
+
+from collections import OrderedDict
+
+import dataclasses
+from dataclasses import dataclass
 
 logger = logging.get_logger(__name__)
 
@@ -130,8 +135,33 @@ class CLTrainer(Trainer):
         
         stsb_spearman = results['STSBenchmark']['dev']['spearman'][0]
         sickr_spearman = results['SICKRelatedness']['dev']['spearman'][0]
+        '''
+        stsb_alig = results['STSBenchmark']['dev']['alig']
+        stsb_unif = results['STSBenchmark']['dev']['unif']
+        stsb_rank = results['STSBenchmark']['dev']['rank']
+        stsb_vne = results['STSBenchmark']['dev']['vne']
+        stsb_avg_cos_sim = results['STSBenchmark']['dev']['avg cos sim']
 
-        metrics = {"eval_stsb_spearman": stsb_spearman, "eval_sickr_spearman": sickr_spearman, "eval_avg_sts": (stsb_spearman + sickr_spearman) / 2} 
+        metrics = {"eval_stsb_spearman": stsb_spearman, "eval_sickr_spearman": sickr_spearman, "eval_avg_sts": (stsb_spearman + sickr_spearman) / 2,
+                   "stsb_align": stsb_alig, "stsb_unif":stsb_unif, "stsb_rank":stsb_rank, "stsb_vne":stsb_vne, "stsb_avg_cos_sim":stsb_avg_cos_sim}
+        '''
+        #stsb_positive_loss = results['STSBenchmark']['dev']['positive_loss']
+        #stsb_negative_loss = results['STSBenchmark']['dev']['negative_loss']
+        stsb_align_loss = results['STSBenchmark']['dev']['align_loss']
+        stsb_uniform_loss = results['STSBenchmark']['dev']['uniform_loss']
+        stsb_rank = results['STSBenchmark']['dev']['rank']
+        stsb_isotropy = results['STSBenchmark']['dev']['isotropy']
+        stsb_avg_cos = results['STSBenchmark']['dev']['avg_cos']
+        stsb_avg_norm = results['STSBenchmark']['dev']['avg_norm']
+        stsb_disentanglement = results['STSBenchmark']['dev']['disentanglement']
+        stsb_vne = results['STSBenchmark']['dev']['vne']
+
+        metrics = {"eval_stsb_spearman": stsb_spearman, "eval_sickr_spearman": sickr_spearman, "eval_avg_sts": (stsb_spearman + sickr_spearman) / 2,
+                   #"stsb_positive_loss": stsb_positive_loss, "stsb_negative_loss":stsb_negative_loss,
+                   "stsb_align_loss":stsb_align_loss, "stsb_uniform_loss":stsb_uniform_loss, "stsb_rank":stsb_rank,
+                   "stsb_isotropy": stsb_isotropy,  "stsb_avg_cos": stsb_avg_cos, "stsb_avg_norm": stsb_avg_norm,
+                   "stsb_disentanglement": stsb_disentanglement, "stsb_vne": stsb_vne}
+
         if eval_senteval_transfer or self.args.eval_transfer:
             avg_transfer = 0
             for task in ['MR', 'CR', 'SUBJ', 'MPQA', 'SST2', 'TREC', 'MRPC']:
@@ -142,7 +172,7 @@ class CLTrainer(Trainer):
 
         self.log(metrics)
         return metrics
-        
+
     def _save_checkpoint(self, model, trial, metrics=None):
         """
         Compared to original implementation, we change the saving policy to
@@ -169,6 +199,9 @@ class CLTrainer(Trainer):
                 output_dir = self.args.output_dir
                 self.state.best_metric = metric_value
                 self.state.best_model_checkpoint = output_dir
+                #-------------------------------------------
+                self.state.best_step = self.state.global_step
+                # -------------------------------------------
 
                 # Only save model when it is the best one
                 self.save_model(output_dir)
@@ -431,6 +464,27 @@ class CLTrainer(Trainer):
                 # We just need to begin an iteration to create the randomization of the sampler.
                 for _ in train_dataloader:
                     break
+        #-------------------------------------
+        awp=None
+        if self.model_args.use_awp:
+            awp=AdvWeightPerturb(model=model, gamma=self.model_args.awp_gamma, eta=self.model_args.fgsm_eta, input_perturb=self.model_args.input_perturb)
+            model.set_awp(awp)
+        #if self.model_args.use_iwp:
+        #    awp=InputWeightPerturb(model, self.model_args.awp_gamma)
+        #    model.set_awp(awp)
+        #-------------------------------------
+        if self.model_args.use_sam:
+            sam=SAM(self.optimizer, model)
+            model.set_sam(sam)
+        #-------------------------------------
+
+        if self.model_args.use_fgsm:
+            fgsm=FGSM(model, self.model_args.fgsm_eta)
+            model.set_fgsm(fgsm)
+
+        #--------------------------------------
+
+
         for epoch in range(epochs_trained, num_train_epochs):
             if isinstance(train_dataloader, DataLoader) and isinstance(train_dataloader.sampler, DistributedSampler):
                 train_dataloader.sampler.set_epoch(epoch)
@@ -493,6 +547,8 @@ class CLTrainer(Trainer):
                     elif self.use_amp:
                         self.scaler.step(self.optimizer)
                         self.scaler.update()
+                    elif self.model_args.use_sam:
+                        sam.step()
                     else:
                         self.optimizer.step()
                     
@@ -505,6 +561,11 @@ class CLTrainer(Trainer):
                     self.control = self.callback_handler.on_step_end(self.args, self.state, self.control)
 
                     self._maybe_log_save_evaluate(tr_loss, model, trial, epoch)
+
+                    #------------------------
+                    if awp is not None:
+                        awp.restore()
+                    #------------------------
 
                 if self.control.should_epoch_stop or self.control.should_training_stop:
                     break
@@ -527,6 +588,26 @@ class CLTrainer(Trainer):
         if self.args.past_index and hasattr(self, "_past"):
             # Clean the state at the end of training
             delattr(self, "_past")
+
+        #-------------------------------------------
+
+        if self.model_args.get_log:
+           pos_sim, origin_neg_sim, generated_neg_sim=self.model.get_log_sim()
+           ret_sim={}
+           ret_sim['pos_sim']=pos_sim
+           ret_sim['origin_neg_sim'] = origin_neg_sim
+           ret_sim['generated_neg_sim'] = generated_neg_sim
+           import pickle
+           with open(os.path.join(self.args.output_dir,"stat.pkl"),'wb') as f:
+               pickle.dump(ret_sim, f)
+
+        if self.model_args.get_vae:
+            torch.save(self.model.get_vae_param(), os.path.join(self.args.output_dir, "vae_state_dict.pt"))
+        '''
+        if self.model_args.get_kmm:
+        '''
+
+        #-------------------------------------------
 
         logger.info("\n\nTraining completed. Do not forget to share your model on huggingface.co/models =)\n\n")
         if self.args.load_best_model_at_end and self.state.best_model_checkpoint is not None:
@@ -557,3 +638,352 @@ class CLTrainer(Trainer):
         self._total_loss_scalar += tr_loss.item()
 
         return TrainOutput(self.state.global_step, self._total_loss_scalar / self.state.global_step, metrics)
+
+
+#https://github.com/huggingface/transformers/blob/v4.2.1/src/transformers/trainer_callback.py#LL36C20-L36C20
+@dataclass
+class TrainerState:
+
+    epoch: Optional[float] = None
+    global_step: int = 0
+    max_steps: int = 0
+    num_train_epochs: int = 0
+    total_flos: int = 0
+    log_history: List[Dict[str, float]] = None
+    best_metric: Optional[float] = None
+    best_model_checkpoint: Optional[str] = None
+    best_step: Optional[float] = None #--------------------------------------------------------------
+    is_local_process_zero: bool = True
+    is_world_process_zero: bool = True
+    is_hyper_param_search: bool = False
+    trial_name: str = None
+    trial_params: Dict[str, Union[str, float, int, bool]] = None
+
+    def __post_init__(self):
+        if self.log_history is None:
+            self.log_history = []
+
+    def save_to_json(self, json_path: str):
+        """ Save the content of this instance in JSON format inside :obj:`json_path`."""
+        json_string = json.dumps(dataclasses.asdict(self), indent=2, sort_keys=True) + "\n"
+        with open(json_path, "w", encoding="utf-8") as f:
+            f.write(json_string)
+
+    @classmethod
+    def load_from_json(cls, json_path: str):
+        """ Create an instance from the content of :obj:`json_path`."""
+        with open(json_path, "r", encoding="utf-8") as f:
+            text = f.read()
+        return cls(**json.loads(text))
+
+#-------------------------------------------------------------------
+
+
+#modified https://github.com/csdongxian/AWP/blob/main/AT_AWP/utils_awp.py
+class AdvWeightPerturb(object):
+    def __init__(self, model, gamma=0.001, eta=0.001,input_perturb=None):
+        super(AdvWeightPerturb, self).__init__()
+        self.model = model
+        self.proxy = copy.deepcopy(self.model)
+        self.proxy_optim = torch.optim.SGD(self.proxy.parameters(), gamma)
+        self.gamma = gamma
+        self.eta= eta
+        self.epsilon= torch.finfo(torch.float32).eps
+
+        self.diff= OrderedDict()
+
+        self.input_perturb=input_perturb
+
+    def perturb(self,
+                input_ids,
+                attention_mask,
+                token_type_ids,
+                position_ids,
+                head_mask,
+                inputs_embeds,
+                output_attentions,
+                output_hidden_states,
+                return_dict,
+                batch_size,
+                num_sent,
+                pooler_type
+                ):
+        self.proxy.load_state_dict(self.model.state_dict())
+        self.proxy.train()
+
+        if self.input_perturb == "noise":
+            noise_size = (input_ids.size(0), input_ids.size(1), self.proxy.embedding_dim)
+            noise = torch.normal(size=noise_size, mean=0, std=self.proxy.noise_std).to(self.proxy.device)
+            self.proxy.bert.set_noise(noise)
+            #print("noise")
+
+        elif self.input_perturb == "fgsm":
+
+            # FGSM
+            outputs = self.proxy.bert(
+                input_ids,
+                attention_mask=attention_mask,
+                token_type_ids=token_type_ids,
+                position_ids=position_ids,
+                head_mask=head_mask,
+                inputs_embeds=inputs_embeds,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=True,
+            )
+            pooler_output = self.proxy.pooler(attention_mask, outputs)
+            pooler_output = pooler_output.view((batch_size, num_sent, pooler_output.size(-1)))  # (bs, num_sent, hidden)
+
+            if pooler_type == "cls":
+                pooler_output = self.proxy.mlp(pooler_output)
+            z1, z2 = pooler_output[:, 0], pooler_output[:, 1]
+
+            # simCSE loss
+            cos_sim = self.proxy.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+
+            labels = torch.arange(cos_sim.size(0)).long().to(self.proxy.device)
+            loss_fct = torch.nn.CrossEntropyLoss()
+
+            loss = loss_fct(cos_sim, labels)
+            loss.backward()
+
+            fgsm_noise = self.proxy.bert.get_current_embed().grad.sign() * self.eta * -1
+            self.proxy.bert.set_noise(fgsm_noise)
+            #print("fgsm")
+
+        # weight perturb ----------------------------------------------
+        # Get raw embeddings
+        outputs = self.proxy.bert(
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=True,
+        )
+        self.proxy.bert.reset_noise()  # remove input noise
+
+        pooler_output = self.proxy.pooler(attention_mask, outputs)
+        pooler_output = pooler_output.view((batch_size, num_sent, pooler_output.size(-1))) # (bs, num_sent, hidden)
+
+        if pooler_type == "cls":
+            pooler_output = self.proxy.mlp(pooler_output)
+        z1, z2 = pooler_output[:,0], pooler_output[:,1]
+
+        # simCSE loss
+        cos_sim = self.proxy.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+
+        labels = torch.arange(cos_sim.size(0)).long().to(self.proxy.device)
+        loss_fct = torch.nn.CrossEntropyLoss()
+
+        loss = loss_fct(cos_sim, labels)
+        loss = -loss # to adverserial direction
+
+        # proxy update
+        self.proxy_optim.zero_grad()
+        loss.backward()
+        self.proxy_optim.step()
+
+        # update adversary weight perturb to main model
+        self.get_weights_diff()
+        #print("perturb")
+        self.update_weights(coeff=1.0 * self.gamma)
+
+    def restore(self):
+        #print("restore")
+        self.update_weights(coeff=-1.0 * self.gamma)
+
+    def get_weights_diff(self):
+        self.diff = OrderedDict()
+        model_state_dict = self.model.state_dict()
+        proxy_state_dict = self.proxy.state_dict()
+        for (old_k, old_w), (new_k, new_w) in zip(model_state_dict.items(), proxy_state_dict.items()):
+            if len(old_w.size()) <= 1:
+                continue
+            if 'weight' in old_k:
+                diff_w = new_w - old_w
+                self.diff[old_k] = old_w.norm() / (diff_w.norm() + self.epsilon) * diff_w
+
+    def update_weights(self, coeff=1.0):
+        names_in_diff = self.diff.keys()
+        with torch.no_grad():
+            for name, param in self.model.named_parameters():
+                if name in names_in_diff:
+                    param.add_(coeff * self.diff[name])
+
+
+
+#modified from https://github.com/davda54/sam/blob/main/sam.py
+class SAM(torch.optim.Optimizer):
+    #def __init__(self, params, base_optimizer, rho=0.05, adaptive=False, **kwargs):
+    def __init__(self, base_optimizer, model, rho=0.05, adaptive=False, **kwargs):
+        assert rho >= 0.0, f"Invalid rho, should be non-negative: {rho}"
+        self.model = model
+        defaults = dict(rho=rho, adaptive=adaptive, **kwargs)
+
+        no_decay = ["bias", "LayerNorm.weight"]
+        params = [
+            {
+                "params": [p for n, p in self.model.named_parameters() if not any(nd in n for nd in no_decay)],
+                #"weight_decay": self.weight_decay,
+                "weight_decay": 0.0,
+            },
+            {
+                "params": [p for n, p in self.model.named_parameters() if any(nd in n for nd in no_decay)],
+                "weight_decay": 0.0,
+            },
+        ]
+
+        #super(SAM, self).__init__(params, defaults)
+        super(SAM, self).__init__(base_optimizer.param_groups, defaults)
+
+        #self.base_optimizer = base_optimizer(self.param_groups, **kwargs)
+        self.base_optimizer = base_optimizer
+        self.param_groups = self.base_optimizer.param_groups
+        self.defaults.update(self.base_optimizer.defaults)
+
+
+    def sam_forward_backward(self,
+                input_ids,
+                attention_mask,
+                token_type_ids,
+                position_ids,
+                head_mask,
+                inputs_embeds,
+                output_attentions,
+                output_hidden_states,
+                return_dict,
+                batch_size,
+                num_sent,
+                pooler_type
+                ):
+
+        # Get raw embeddings
+        outputs = self.model.bert(
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=True,
+        )
+        pooler_output = self.model.pooler(attention_mask, outputs)
+        pooler_output = pooler_output.view((batch_size, num_sent, pooler_output.size(-1))) # (bs, num_sent, hidden)
+
+        if pooler_type == "cls":
+            pooler_output = self.model.mlp(pooler_output)
+        z1, z2 = pooler_output[:,0], pooler_output[:,1]
+
+        # simCSE loss
+        cos_sim = self.model.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+
+        labels = torch.arange(cos_sim.size(0)).long().to(self.model.device)
+        loss_fct = torch.nn.CrossEntropyLoss()
+
+        loss = loss_fct(cos_sim, labels)
+        loss.backward()
+
+    @torch.no_grad()
+    def sam_step(self):
+        grad_norm = self._grad_norm()
+        for group in self.param_groups:
+            scale = group["rho"] / (grad_norm + 1e-12)
+
+            for p in group["params"]:
+                if p.grad is None: continue
+                self.state[p]["old_p"] = p.data.clone()
+                e_w = (torch.pow(p, 2) if group["adaptive"] else 1.0) * p.grad * scale.to(p)
+                p.add_(e_w)  # climb to the local maximum "w + e(w)"
+
+        self.zero_grad()
+        #print("sam step")
+
+    @torch.no_grad()
+    def step(self, zero_grad=False):
+        for group in self.param_groups:
+            for p in group["params"]:
+                if p.grad is None: continue
+                p.data = self.state[p]["old_p"]  # get back to "w" from "w + e(w)"
+
+        self.base_optimizer.step()  # do the actual "sharpness-aware" update
+        #print("real step")
+
+        if zero_grad: self.zero_grad()
+
+    def _grad_norm(self):
+        shared_device = self.param_groups[0]["params"][0].device  # put everything on the same device, in case of model parallelism
+        norm = torch.norm(
+                    torch.stack([
+                        ((torch.abs(p) if group["adaptive"] else 1.0) * p.grad).norm(p=2).to(shared_device)
+                        for group in self.param_groups for p in group["params"]
+                        if p.grad is not None
+                    ]),
+                    p=2
+               )
+        return norm
+
+    def load_state_dict(self, state_dict):
+        super().load_state_dict(state_dict)
+        self.base_optimizer.param_groups = self.param_groups
+
+
+class FGSM(object):
+    def __init__(self, model, eta=0.001):
+        super().__init__()
+        self.model = model
+        self.eta = eta
+
+        self.model.bert.set_apply_noise("add")
+
+    def perturb(self,
+                input_ids,
+                attention_mask,
+                token_type_ids,
+                position_ids,
+                head_mask,
+                inputs_embeds,
+                output_attentions,
+                output_hidden_states,
+                return_dict,
+                batch_size,
+                num_sent,
+                pooler_type
+                ):
+
+        # Get raw embeddings
+        outputs = self.model.bert(
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=True,
+        )
+        pooler_output = self.model.pooler(attention_mask, outputs)
+        pooler_output = pooler_output.view((batch_size, num_sent, pooler_output.size(-1))) # (bs, num_sent, hidden)
+
+        if pooler_type == "cls":
+            pooler_output = self.model.mlp(pooler_output)
+        z1, z2 = pooler_output[:,0], pooler_output[:,1]
+
+        # simCSE loss
+        cos_sim = self.model.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+
+        labels = torch.arange(cos_sim.size(0)).long().to(self.model.device)
+        loss_fct = torch.nn.CrossEntropyLoss()
+
+        loss = loss_fct(cos_sim, labels)
+        loss.backward()
+
+        fgsm_noise=self.model.bert.get_current_embed().grad.sign()*self.eta*-1
+
+        self.model.bert.set_noise(fgsm_noise)

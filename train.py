@@ -130,6 +130,151 @@ class ModelArguments:
         }
     )
 
+    use_bss_loss : bool = field(
+        default=False,
+        metadata={
+            "help": "add bss loss"
+        }
+    )
+
+    get_vae : bool = field(
+        default=False,
+        metadata={
+            "help": "forcefully set loss 0"
+        }
+    )
+
+    get_log : bool = field(
+        default=False,
+        metadata={
+            "help": "get log sim"
+        }
+    )
+
+    k: int = field(
+        default=1,
+        metadata={
+            "help": "scale factor for extra negative batch size"
+        }
+    )
+    difficulty : str = field(
+        default="easy",
+        metadata={
+            "help": "(easy, normal, hard)"
+        }
+    )
+
+    gmm_comp: int = field(
+        default=8,
+        metadata={
+            "help": "number of components of gmm"
+        }
+    )
+    encoding_buffer_size: int = field(
+        default=8,
+        metadata={
+            "help": "encoding_buffer_size x batch size"
+        }
+    )
+
+    update_step: int = field(
+        default=100,
+        metadata={
+            "help": "update gmm periodically"
+        }
+    )
+
+    coef: float = field(
+        default=0.1,
+        metadata={
+            "help": "coefficient for axillary loss term"
+        }
+    )
+    lower_bound: int = field(
+        default=0,
+        metadata={
+            "help": "lower bound for loss term"
+        }
+    )
+
+    use_awp: bool = field(
+        default=False,
+        metadata={
+            "help": "activate adverserial weight perturbation"
+        }
+    )
+    awp_gamma: float = field(
+        default=0.0001,
+        metadata={
+            "help": "gamma for adverserial weight perturbation"
+        }
+    )
+
+    use_sam: bool = field(
+        default=False,
+        metadata={
+            "help": "activate sharpness aware maximization"
+        }
+    )
+
+
+    add_noise: bool = field(
+        default=False,
+        metadata={
+            "help": "activate noise add at embedding"
+        }
+    )
+    mul_noise: bool = field(
+        default=False,
+        metadata={
+            "help": "activate noise mul at embedding"
+        }
+    )
+    noise_std: float = field(
+        default=0.001,
+        metadata={
+            "help": "std of noise to be added at embedding"
+        }
+    )
+    mul_bern: bool = field(
+        default=False,
+        metadata={
+            "help": "activate bernoulli mask mul at embedding"
+        }
+    )
+    mul_feat_bern: bool = field(
+        default=False,
+        metadata={
+            "help": "activate bernoulli mask(along feat dim) mul at embedding"
+        }
+    )
+    bern_ratio: float = field(
+        default=0.9,
+        metadata={
+            "help": "ratio of 1 in bernoulli mask"
+        }
+    )
+
+    use_fgsm: bool = field(
+        default=False,
+        metadata={
+            "help": "activate fgsm"
+        }
+    )
+    fgsm_eta: float = field(
+        default=0.001,
+        metadata={
+            "help": "coef for fgsm step"
+        }
+    )
+
+    input_perturb:str = field(
+        default=None,
+        metadata={
+            "help": "[none, noise, fgsm ]"
+        }
+    )
+
 
 @dataclass
 class DataTrainingArguments:
@@ -356,6 +501,11 @@ def main():
             "You are instantiating a new tokenizer from scratch. This is not supported by this script."
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
+
+    print("------------------------------------------------------")
+    print("applied hidden dropout rate:", config.hidden_dropout_prob)
+    print("applied attention dropout rate:", config.attention_probs_dropout_prob)
+    print("------------------------------------------------------")
 
     if model_args.model_name_or_path:
         if 'roberta' in model_args.model_name_or_path:
@@ -584,13 +734,14 @@ def main():
                 for key, value in sorted(results.items()):
                     logger.info(f"  {key} = {value}")
                     writer.write(f"{key} = {value}\n")
-
-    return results
+    return training_args.seed, results
 
 def _mp_fn(index):
     # For xla_spawn (TPUs)
     main()
 
-
 if __name__ == "__main__":
-    main()
+    seed, result=main()
+    #from IPython import embed;   embed()
+    #print("returned")
+    #print(result)

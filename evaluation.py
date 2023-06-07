@@ -25,6 +25,19 @@ def print_table(task_names, scores):
     tb.add_row(scores)
     print(tb)
 
+def save_dict(args, task_names, scores, task="sts"):
+    import os
+    import json
+    ret={}
+    ret['name']=os.path.basename(args.model_name_or_path)
+    for n, s in zip(task_names, scores): ret[n]=float(s)
+    fname=f"{ret['name']}_{task}.json"
+    print("args:", args.model_name_or_path)
+    print("name:",os.path.basename(args.model_name_or_path))
+    print(fname)
+    with open(fname, "w") as f:
+        json.dump(ret, f, indent=4)
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name_or_path", type=str, 
@@ -173,33 +186,35 @@ def main():
     elif args.mode == 'test' or args.mode == 'fasttest':
         print("------ %s ------" % (args.mode))
 
-        task_names = []
-        scores = []
+        sts_task_names = []
+        sts_scores = []
         for task in ['STS12', 'STS13', 'STS14', 'STS15', 'STS16', 'STSBenchmark', 'SICKRelatedness']:
-            task_names.append(task)
+            sts_task_names.append(task)
             if task in results:
                 if task in ['STS12', 'STS13', 'STS14', 'STS15', 'STS16']:
-                    scores.append("%.2f" % (results[task]['all']['spearman']['all'] * 100))
+                    sts_scores.append("%.2f" % (results[task]['all']['spearman']['all'] * 100))
                 else:
-                    scores.append("%.2f" % (results[task]['test']['spearman'].correlation * 100))
+                    sts_scores.append("%.2f" % (results[task]['test']['spearman'].correlation * 100))
             else:
-                scores.append("0.00")
-        task_names.append("Avg.")
-        scores.append("%.2f" % (sum([float(score) for score in scores]) / len(scores)))
-        print_table(task_names, scores)
+                sts_scores.append("0.00")
+        sts_task_names.append("sts Avg.")
+        sts_scores.append("%.2f" % (sum([float(score) for score in sts_scores]) / len(sts_scores)))
+        print_table(sts_task_names, sts_scores)
 
-        task_names = []
-        scores = []
+        transfer_task_names = []
+        transfer_scores = []
         for task in ['MR', 'CR', 'SUBJ', 'MPQA', 'SST2', 'TREC', 'MRPC']:
-            task_names.append(task)
+            transfer_task_names.append(task)
             if task in results:
-                scores.append("%.2f" % (results[task]['acc']))    
+                transfer_scores.append("%.2f" % (results[task]['acc']))
             else:
-                scores.append("0.00")
-        task_names.append("Avg.")
-        scores.append("%.2f" % (sum([float(score) for score in scores]) / len(scores)))
-        print_table(task_names, scores)
+                transfer_scores.append("0.00")
+        transfer_task_names.append("transfer Avg.")
+        transfer_scores.append("%.2f" % (sum([float(score) for score in transfer_scores]) / len(transfer_scores)))
+        print_table(transfer_task_names, transfer_scores)
 
+        print("save_dict")
+        save_dict(args,sts_task_names+transfer_task_names, sts_scores+transfer_scores)
 
 if __name__ == "__main__":
     main()

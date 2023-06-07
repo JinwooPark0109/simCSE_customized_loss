@@ -22,6 +22,21 @@ from scipy.stats import spearmanr, pearsonr
 from senteval.utils import cosine
 from senteval.sick import SICKEval
 
+import torch
+
+from .metric import (
+    measure_positive_loss,
+    measure_negative_loss,
+    measure_align_loss,
+    measure_uniform_loss,
+    measure_isotropy,
+    measure_approx_rank,
+    measure_avg_cos,
+    measure_avg_norm,
+    measure_disentanglement,
+    get_vne
+)
+
 
 class STSEval(object):
     def loadFile(self, fpath):
@@ -181,6 +196,114 @@ class STSBenchmarkEval(STSEval):
         self.samples += sick_data['X_A'] + sick_data["X_B"]
         return (sick_data['X_A'], sick_data["X_B"], sick_data['y'])
 
+    def run(self, params, batcher):
+        results = {}
+        all_sys_scores = []
+        all_gs_scores = []
+        for dataset in self.datasets:
+            sys_scores = []
+            enc1_list=[]
+            enc2_list=[]
+            input1, input2, gs_scores = self.data[dataset]
+            for ii in range(0, len(gs_scores), params.batch_size):
+                batch1 = input1[ii:ii + params.batch_size]
+                batch2 = input2[ii:ii + params.batch_size]
+
+                # we assume get_batch already throws out the faulty ones
+                if len(batch1) == len(batch2) and len(batch1) > 0:
+                    enc1 = batcher(params, batch1)
+                    enc2 = batcher(params, batch2)
+
+                    enc1_list.append(enc1)
+                    enc2_list.append(enc2)
+
+                    for kk in range(enc2.shape[0]):
+                        sys_score = self.similarity(enc1[kk], enc2[kk])
+                        sys_scores.append(sys_score)
+
+            all_enc1=torch.cat(enc1_list, axis=0)
+            all_enc2=torch.cat(enc2_list, axis=0)
+
+            '''
+            alig = align_loss(all_enc1, all_enc2)
+            unif = uniform_loss(torch.cat((all_enc1, all_enc2), dim=0))
+            rank = measure_approx_rank(torch.cat((all_enc1, all_enc2), dim=0))
+            vne = vne_loss(torch.cat((all_enc1, all_enc2), dim=0))
+            avg_cos_sim = (get_avg_cos_sim(all_enc1)+get_avg_cos_sim(all_enc2))/2
+            '''
+
+            #---------------------code from euna-----------------------
+            #all_cos_sim = torch.nn.CosineSimilarity(dim=-1)(all_enc1.unsqueeze(1), all_enc2.unsqueeze(0))/0.05
+            #positive_loss = measure_positive_loss(all_cos_sim)
+            #negative_loss = measure_negative_loss(all_cos_sim)
+            align_loss = measure_align_loss(all_enc1, all_enc2)
+            uniform_loss = measure_uniform_loss(all_enc1)
+            isotropy = measure_isotropy(all_enc1)
+            rank = measure_approx_rank(all_enc1)
+            avg_cos = measure_avg_cos(all_enc1)
+            avg_norm = measure_avg_norm(all_enc1)
+            disentanglement = measure_disentanglement(all_enc1)
+            vne=get_vne(all_enc1)
+            # --------------------------------------------------------
+
+            all_sys_scores.extend(sys_scores)
+            all_gs_scores.extend(gs_scores)
+            '''
+            results[dataset] = {'pearson': pearsonr(sys_scores, gs_scores),
+                                'spearman': spearmanr(sys_scores, gs_scores),
+                                'alig' : alig,
+                                'unif' : unif,
+                                'rank' : rank,
+                                'vne' : vne,
+                                'avg cos sim' : avg_cos_sim,
+                                'nsamples': len(sys_scores)}
+            '''
+            results[dataset] = {'pearson': pearsonr(sys_scores, gs_scores),
+                                'spearman': spearmanr(sys_scores, gs_scores),
+                                #"positive_loss": positive_loss,
+                                #"negative_loss":negative_loss,
+                                "align_loss":align_loss,
+                                "uniform_loss":uniform_loss,
+                                "rank":rank,
+                                "isotropy":isotropy,
+                                "avg_cos":avg_cos,
+                                "avg_norm":avg_norm,
+                                "disentanglement":disentanglement,
+                                "vne":vne,
+                                'nsamples': len(sys_scores)}
+
+            logging.debug('%s : pearson = %.4f, spearman = %.4f' %
+                          (dataset, results[dataset]['pearson'][0],
+                           results[dataset]['spearman'][0]))
+
+        weights = [results[dset]['nsamples'] for dset in results.keys()]
+        list_prs = np.array([results[dset]['pearson'][0] for
+                             dset in results.keys()])
+        list_spr = np.array([results[dset]['spearman'][0] for
+                             dset in results.keys()])
+
+        avg_pearson = np.average(list_prs)
+        avg_spearman = np.average(list_spr)
+        wavg_pearson = np.average(list_prs, weights=weights)
+        wavg_spearman = np.average(list_spr, weights=weights)
+        all_pearson = pearsonr(all_sys_scores, all_gs_scores)
+        all_spearman = spearmanr(all_sys_scores, all_gs_scores)
+        results['all'] = {'pearson': {'all': all_pearson[0],
+                                      'mean': avg_pearson,
+                                      'wmean': wavg_pearson},
+                          'spearman': {'all': all_spearman[0],
+                                       'mean': avg_spearman,
+                                       'wmean': wavg_spearman}}
+        logging.debug('ALL : Pearson = %.4f, \
+            Spearman = %.4f' % (all_pearson[0], all_spearman[0]))
+        logging.debug('ALL (weighted average) : Pearson = %.4f, \
+            Spearman = %.4f' % (wavg_pearson, wavg_spearman))
+        logging.debug('ALL (average) : Pearson = %.4f, \
+            Spearman = %.4f\n' % (avg_pearson, avg_spearman))
+
+        return results
+
+
 class STSBenchmarkFinetune(SICKEval):
     def __init__(self, task_path, seed=1111):
         logging.debug('\n\n***** Transfer task : STSBenchmark*****\n\n')
@@ -201,6 +324,8 @@ class STSBenchmarkFinetune(SICKEval):
 
         sick_data['y'] = [float(s) for s in sick_data['y']]
         return sick_data
+
+
         
 class SICKRelatednessEval(STSEval):
     def __init__(self, task_path, seed=1111):
