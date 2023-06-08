@@ -275,6 +275,13 @@ class ModelArguments:
         }
     )
 
+    get_metric : bool = field(
+        default=False,
+        metadata={
+            "help": "get extra metric"
+        }
+    )
+
 
 @dataclass
 class DataTrainingArguments:

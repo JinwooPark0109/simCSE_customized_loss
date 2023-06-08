@@ -232,45 +232,28 @@ class STSBenchmarkEval(STSEval):
             avg_cos_sim = (get_avg_cos_sim(all_enc1)+get_avg_cos_sim(all_enc2))/2
             '''
 
-            #---------------------code from euna-----------------------
-            #all_cos_sim = torch.nn.CosineSimilarity(dim=-1)(all_enc1.unsqueeze(1), all_enc2.unsqueeze(0))/0.05
-            #positive_loss = measure_positive_loss(all_cos_sim)
-            #negative_loss = measure_negative_loss(all_cos_sim)
-            align_loss = measure_align_loss(all_enc1, all_enc2)
-            uniform_loss = measure_uniform_loss(all_enc1)
-            isotropy = measure_isotropy(all_enc1)
-            rank = measure_approx_rank(all_enc1)
-            avg_cos = measure_avg_cos(all_enc1)
-            avg_norm = measure_avg_norm(all_enc1)
-            disentanglement = measure_disentanglement(all_enc1)
-            vne=get_vne(all_enc1)
-            # --------------------------------------------------------
-
             all_sys_scores.extend(sys_scores)
             all_gs_scores.extend(gs_scores)
-            '''
+
             results[dataset] = {'pearson': pearsonr(sys_scores, gs_scores),
                                 'spearman': spearmanr(sys_scores, gs_scores),
-                                'alig' : alig,
-                                'unif' : unif,
-                                'rank' : rank,
-                                'vne' : vne,
-                                'avg cos sim' : avg_cos_sim,
                                 'nsamples': len(sys_scores)}
-            '''
-            results[dataset] = {'pearson': pearsonr(sys_scores, gs_scores),
-                                'spearman': spearmanr(sys_scores, gs_scores),
-                                #"positive_loss": positive_loss,
-                                #"negative_loss":negative_loss,
-                                "align_loss":align_loss,
-                                "uniform_loss":uniform_loss,
-                                "rank":rank,
-                                "isotropy":isotropy,
-                                "avg_cos":avg_cos,
-                                "avg_norm":avg_norm,
-                                "disentanglement":disentanglement,
-                                "vne":vne,
-                                'nsamples': len(sys_scores)}
+
+            if params["get_metrics"]:
+                print("add metric")
+                additional_metrics ={
+                    # "positive_loss": positive_loss,
+                    # "negative_loss":negative_loss,
+                    "align_loss": measure_align_loss(all_enc1, all_enc2),
+                    "uniform_loss": measure_uniform_loss(all_enc1),
+                    "rank": measure_approx_rank(all_enc1),
+                    "isotropy": measure_isotropy(all_enc1),
+                    "avg_cos": measure_avg_cos(all_enc1),
+                    "avg_norm": measure_avg_norm(all_enc1),
+                    "disentanglement": measure_disentanglement(all_enc1),
+                    "vne": get_vne(all_enc1)
+                }
+                results[dataset].update(additional_metrics)
 
             logging.debug('%s : pearson = %.4f, spearman = %.4f' %
                           (dataset, results[dataset]['pearson'][0],

@@ -125,6 +125,9 @@ class CLTrainer(Trainer):
         params = {'task_path': PATH_TO_DATA, 'usepytorch': True, 'kfold': 5}
         params['classifier'] = {'nhid': 0, 'optim': 'rmsprop', 'batch_size': 128,
                                             'tenacity': 3, 'epoch_size': 2}
+        #---------------
+        params['get_metrics']=self.model_args.get_metric
+        #----------------
 
         se = senteval.engine.SE(params, batcher, prepare)
         tasks = ['STSBenchmark', 'SICKRelatedness']
@@ -135,32 +138,28 @@ class CLTrainer(Trainer):
         
         stsb_spearman = results['STSBenchmark']['dev']['spearman'][0]
         sickr_spearman = results['SICKRelatedness']['dev']['spearman'][0]
-        '''
-        stsb_alig = results['STSBenchmark']['dev']['alig']
-        stsb_unif = results['STSBenchmark']['dev']['unif']
-        stsb_rank = results['STSBenchmark']['dev']['rank']
-        stsb_vne = results['STSBenchmark']['dev']['vne']
-        stsb_avg_cos_sim = results['STSBenchmark']['dev']['avg cos sim']
+        metrics = {"eval_stsb_spearman": stsb_spearman, "eval_sickr_spearman": sickr_spearman,
+                   "eval_avg_sts": (stsb_spearman + sickr_spearman) / 2}
 
-        metrics = {"eval_stsb_spearman": stsb_spearman, "eval_sickr_spearman": sickr_spearman, "eval_avg_sts": (stsb_spearman + sickr_spearman) / 2,
-                   "stsb_align": stsb_alig, "stsb_unif":stsb_unif, "stsb_rank":stsb_rank, "stsb_vne":stsb_vne, "stsb_avg_cos_sim":stsb_avg_cos_sim}
-        '''
-        #stsb_positive_loss = results['STSBenchmark']['dev']['positive_loss']
-        #stsb_negative_loss = results['STSBenchmark']['dev']['negative_loss']
-        stsb_align_loss = results['STSBenchmark']['dev']['align_loss']
-        stsb_uniform_loss = results['STSBenchmark']['dev']['uniform_loss']
-        stsb_rank = results['STSBenchmark']['dev']['rank']
-        stsb_isotropy = results['STSBenchmark']['dev']['isotropy']
-        stsb_avg_cos = results['STSBenchmark']['dev']['avg_cos']
-        stsb_avg_norm = results['STSBenchmark']['dev']['avg_norm']
-        stsb_disentanglement = results['STSBenchmark']['dev']['disentanglement']
-        stsb_vne = results['STSBenchmark']['dev']['vne']
+        if params['get_metrics']:
+            #metrics["stsb_positive_loss"] = results['STSBenchmark']['dev']['positive_loss']
+            #metrics["stsb_negative_loss"] = results['STSBenchmark']['dev']['negative_loss']
+            metrics["stsb_align_loss"] = results['STSBenchmark']['dev']['align_loss']
+            metrics["stsb_uniform_loss"] = results['STSBenchmark']['dev']['uniform_loss']
+            metrics["stsb_rank"] = results['STSBenchmark']['dev']['rank']
+            metrics["stsb_isotropy"] = results['STSBenchmark']['dev']['isotropy']
+            metrics["stsb_avg_cos"] = results['STSBenchmark']['dev']['avg_cos']
+            metrics["stsb_avg_norm"] = results['STSBenchmark']['dev']['avg_norm']
+            metrics["stsb_disentanglement"] = results['STSBenchmark']['dev']['disentanglement']
+            metrics["stsb_vne"] = results['STSBenchmark']['dev']['vne']
 
-        metrics = {"eval_stsb_spearman": stsb_spearman, "eval_sickr_spearman": sickr_spearman, "eval_avg_sts": (stsb_spearman + sickr_spearman) / 2,
+            '''
+            metrics = {"eval_stsb_spearman": stsb_spearman, "eval_sickr_spearman": sickr_spearman, "eval_avg_sts": (stsb_spearman + sickr_spearman) / 2,
                    #"stsb_positive_loss": stsb_positive_loss, "stsb_negative_loss":stsb_negative_loss,
                    "stsb_align_loss":stsb_align_loss, "stsb_uniform_loss":stsb_uniform_loss, "stsb_rank":stsb_rank,
                    "stsb_isotropy": stsb_isotropy,  "stsb_avg_cos": stsb_avg_cos, "stsb_avg_norm": stsb_avg_norm,
                    "stsb_disentanglement": stsb_disentanglement, "stsb_vne": stsb_vne}
+            '''
 
         if eval_senteval_transfer or self.args.eval_transfer:
             avg_transfer = 0
