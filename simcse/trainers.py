@@ -477,6 +477,11 @@ class CLTrainer(Trainer):
             model.set_sam(sam)
         #-------------------------------------
 
+        if self.model_args.use_asam:
+            sam=SAM(self.optimizer, model, rho=0.5, adaptive=True) #x10 larger rho
+            model.set_sam(sam)
+        #-------------------------------------
+
         if self.model_args.use_fgsm:
             fgsm=FGSM(model, self.model_args.fgsm_eta)
             model.set_fgsm(fgsm)

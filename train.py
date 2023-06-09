@@ -217,6 +217,12 @@ class ModelArguments:
         }
     )
 
+    use_asam: bool = field(
+        default=False,
+        metadata={
+            "help": "activate adaptive sharpness aware maximization"
+        }
+    )
 
     add_noise: bool = field(
         default=False,

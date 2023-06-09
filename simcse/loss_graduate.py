@@ -567,6 +567,69 @@ def bernoulli_pos_smoothing_loss(cls, tup):
 
 
 
+def mask_sigificant_loss(cls, tup):
+    z1, z2, _ = tup
+
+    t = torch.rand(2, 10)
+    dim = z1.size(1)
+
+    mask = torch.ones(z1.size()).to(cls.device)
+    for row_idx, row in enumerate(z1):
+        _, top_k_idx = torch.topk(row, int(dim * 0.1))
+        _ = mask[row_idx].scatter_(0, top_k_idx, 0)
+    pos=z1*mask
+
+    pos_sim = cls.sim(z1, pos).unsqueeze(1)  # (b,1)
+    origin_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    origin_neg_sim = torch.triu(origin_sim, diagonal=1)[:, 1:] +\
+                   torch.tril(origin_sim, diagonal=-1)[:,:-1]  # (b, b-1)
+
+    cos_sim = torch.concat([pos_sim, origin_neg_sim], dim=1)  # (b, b)
+
+    labels = torch.zeros(cos_sim.size(0)).long().to(cls.device) #[0, :] is pos at all batch item
+    loss_fct = torch.nn.CrossEntropyLoss()
+
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim)
+
+    loss = loss_fct(cos_sim, labels)
+
+    return cos_sim, loss
+
+
+def mask_trivial_loss(cls, tup):
+    z1, z2, _ = tup
+
+    t = torch.rand(2, 10)
+    dim = z1.size(1)
+
+    mask = torch.ones(z1.size()).to(cls.device)
+    for row_idx, row in enumerate(z1):
+        _, top_k_idx = torch.topk(row, int(dim * 0.1), largest=False)
+        _ = mask[row_idx].scatter_(0, top_k_idx, 0)
+    pos=z1*mask
+
+    pos_sim = cls.sim(z1, pos).unsqueeze(1)  # (b,1)
+    origin_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    origin_neg_sim = torch.triu(origin_sim, diagonal=1)[:, 1:] +\
+                   torch.tril(origin_sim, diagonal=-1)[:,:-1]  # (b, b-1)
+
+    cos_sim = torch.concat([pos_sim, origin_neg_sim], dim=1)  # (b, b)
+
+    labels = torch.zeros(cos_sim.size(0)).long().to(cls.device) #[0, :] is pos at all batch item
+    loss_fct = torch.nn.CrossEntropyLoss()
+
+    cls.log_sim(pos_sim=pos_sim, origin_neg_sim=origin_neg_sim)
+
+    loss = loss_fct(cos_sim, labels)
+
+    return cos_sim, loss
+
+
+
+
+
+
+
 def fgsm_1_1_pos_loss(cls, tup):
     z1, z2, _ = tup
 

@@ -240,7 +240,7 @@ class STSBenchmarkEval(STSEval):
                                 'nsamples': len(sys_scores)}
 
             if params["get_metrics"]:
-                print("add metric")
+                #print("add metric")
                 additional_metrics ={
                     # "positive_loss": positive_loss,
                     # "negative_loss":negative_loss,
